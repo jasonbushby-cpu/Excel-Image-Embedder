@@ -8,503 +8,85 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     :root {
-      --bg: #f5f4f0;
-      --surface: #ffffff;
-      --border: rgba(0,0,0,0.1);
-      --border-strong: rgba(0,0,0,0.18);
-      --text: #1a1a1a;
-      --text-muted: #666;
-      --text-faint: #999;
-      --green: #1D9E75;
-      --green-light: #E1F5EE;
-      --green-dark: #0F6E56;
-      --red: #E24B4A;
-      --red-light: #FCEBEB;
-      --amber: #BA7517;
-      --amber-light: #FAEEDA;
-      --radius: 10px;
-      --radius-sm: 6px;
+      --bg: #f5f4f0; --surface: #fff; --border: rgba(0,0,0,0.1); --border-strong: rgba(0,0,0,0.18);
+      --text: #1a1a1a; --text-muted: #666; --text-faint: #999;
+      --green: #1D9E75; --green-light: #E1F5EE; --green-dark: #0F6E56;
+      --red: #E24B4A; --red-light: #FCEBEB; --amber: #BA7517; --amber-light: #FAEEDA;
+      --radius: 10px; --radius-sm: 6px;
     }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      padding: 2rem 1rem;
-    }
-
-    .container {
-      max-width: 680px;
-      margin: 0 auto;
-    }
-
-    header {
-      margin-bottom: 2rem;
-    }
-
-    .brand {
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: var(--text-faint);
-      margin-bottom: 0.4rem;
-    }
-
-    h1 {
-      font-size: 26px;
-      font-weight: 600;
-      letter-spacing: -0.5px;
-      color: var(--text);
-      margin-bottom: 0.3rem;
-    }
-
-    .subtitle {
-      font-size: 14px;
-      color: var(--text-muted);
-    }
-
-    .card {
-      background: var(--surface);
-      border: 0.5px solid var(--border);
-      border-radius: var(--radius);
-      padding: 1.25rem;
-      margin-bottom: 0.75rem;
-      transition: opacity 0.2s;
-    }
-
-    .card.locked {
-      opacity: 0.4;
-      pointer-events: none;
-    }
-
-    .card-header {
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      margin-bottom: 1rem;
-    }
-
-    .step-badge {
-      width: 24px;
-      height: 24px;
-      border-radius: 50%;
-      border: 1.5px solid var(--border-strong);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--text-muted);
-      flex-shrink: 0;
-      margin-top: 1px;
-      transition: all 0.2s;
-    }
-
-    .step-badge.done {
-      background: var(--green);
-      border-color: var(--green);
-      color: #fff;
-    }
-
-    .card-title {
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--text);
-    }
-
-    .card-desc {
-      font-size: 12px;
-      color: var(--text-muted);
-      margin-top: 2px;
-    }
-
-    .drop-zone {
-      border: 1.5px dashed var(--border-strong);
-      border-radius: var(--radius-sm);
-      padding: 2rem;
-      text-align: center;
-      cursor: pointer;
-      transition: all 0.15s;
-      background: var(--bg);
-    }
-
-    .drop-zone:hover, .drop-zone.dragover {
-      border-color: var(--green);
-      background: var(--green-light);
-    }
-
-    .drop-zone i {
-      font-size: 28px;
-      color: var(--text-faint);
-      display: block;
-      margin-bottom: 0.5rem;
-    }
-
-    .drop-zone .drop-label {
-      font-size: 13px;
-      color: var(--text-muted);
-    }
-
-    .drop-zone .drop-label strong {
-      color: var(--text);
-    }
-
-    .drop-zone .drop-hint {
-      font-size: 11px;
-      color: var(--text-faint);
-      margin-top: 4px;
-    }
-
-    .file-pill {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: var(--green-light);
-      border: 0.5px solid #5DCAA5;
-      border-radius: var(--radius-sm);
-      padding: 0.6rem 0.75rem;
-      font-size: 13px;
-      color: var(--green-dark);
-    }
-
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; padding: 2rem 1rem; }
+    .container { max-width: 680px; margin: 0 auto; }
+    header { margin-bottom: 2rem; }
+    .brand { font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 0.4rem; }
+    h1 { font-size: 26px; font-weight: 600; letter-spacing: -0.5px; margin-bottom: 0.3rem; }
+    .subtitle { font-size: 14px; color: var(--text-muted); }
+    .card { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 1.25rem; margin-bottom: 0.75rem; transition: opacity 0.2s; }
+    .card.locked { opacity: 0.4; pointer-events: none; }
+    .card-header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 1rem; }
+    .step-badge { width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--border-strong); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: var(--text-muted); flex-shrink: 0; margin-top: 1px; transition: all 0.2s; }
+    .step-badge.done { background: var(--green); border-color: var(--green); color: #fff; }
+    .card-title { font-size: 14px; font-weight: 600; }
+    .card-desc { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .drop-zone { border: 1.5px dashed var(--border-strong); border-radius: var(--radius-sm); padding: 2rem; text-align: center; cursor: pointer; transition: all 0.15s; background: var(--bg); }
+    .drop-zone:hover, .drop-zone.dragover { border-color: var(--green); background: var(--green-light); }
+    .drop-zone i { font-size: 28px; color: var(--text-faint); display: block; margin-bottom: 0.5rem; }
+    .drop-label { font-size: 13px; color: var(--text-muted); }
+    .drop-label strong { color: var(--text); }
+    .drop-hint { font-size: 11px; color: var(--text-faint); margin-top: 4px; }
+    .file-pill { display: flex; align-items: center; gap: 10px; background: var(--green-light); border: 0.5px solid #5DCAA5; border-radius: var(--radius-sm); padding: 0.6rem 0.75rem; font-size: 13px; color: var(--green-dark); }
     .file-pill i { font-size: 18px; }
-
-    .file-pill .remove {
-      margin-left: auto;
-      cursor: pointer;
-      color: var(--green-dark);
-      opacity: 0.6;
-      font-size: 16px;
-    }
-
+    .file-pill .remove { margin-left: auto; cursor: pointer; opacity: 0.6; font-size: 16px; }
     .file-pill .remove:hover { opacity: 1; }
-
-    .col-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    }
-
-    .field {
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
-    }
-
-    .field label {
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--text-muted);
-    }
-
-    select {
-      height: 38px;
-      padding: 0 0.75rem;
-      border: 0.5px solid var(--border-strong);
-      border-radius: var(--radius-sm);
-      background: var(--bg);
-      color: var(--text);
-      font-size: 13px;
-      font-family: inherit;
-      cursor: pointer;
-      appearance: none;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
-      background-repeat: no-repeat;
-      background-position: right 10px center;
-    }
-
+    .col-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .field { display: flex; flex-direction: column; gap: 5px; }
+    .field label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+    select { height: 38px; padding: 0 0.75rem; border: 0.5px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); font-size: 13px; font-family: inherit; cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; }
     select:focus { outline: 2px solid var(--green); outline-offset: 1px; }
-
-    .source-tabs {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      border: 0.5px solid var(--border-strong);
-      border-radius: var(--radius-sm);
-      overflow: hidden;
-      margin-bottom: 1rem;
-    }
-
-    .source-tab {
-      padding: 0.65rem;
-      text-align: center;
-      font-size: 13px;
-      font-family: inherit;
-      cursor: pointer;
-      background: var(--bg);
-      color: var(--text-muted);
-      border: none;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      transition: all 0.1s;
-    }
-
+    .source-tabs { display: grid; grid-template-columns: 1fr 1fr; border: 0.5px solid var(--border-strong); border-radius: var(--radius-sm); overflow: hidden; margin-bottom: 1rem; }
+    .source-tab { padding: 0.65rem; text-align: center; font-size: 13px; font-family: inherit; cursor: pointer; background: var(--bg); color: var(--text-muted); border: none; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.1s; }
     .source-tab:first-child { border-right: 0.5px solid var(--border-strong); }
-
-    .source-tab.active {
-      background: var(--surface);
-      color: var(--text);
-      font-weight: 600;
-    }
-
-    .drive-status {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: var(--green-light);
-      border: 0.5px solid #5DCAA5;
-      border-radius: var(--radius-sm);
-      padding: 0.75rem;
-    }
-
-    .pulse {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--green);
-      flex-shrink: 0;
-      animation: pulse 2s infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
-    }
-
+    .source-tab.active { background: var(--surface); color: var(--text); font-weight: 600; }
+    .drive-status { display: flex; align-items: center; gap: 10px; background: var(--green-light); border: 0.5px solid #5DCAA5; border-radius: var(--radius-sm); padding: 0.75rem; }
+    .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex-shrink: 0; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
     .drive-status-text { font-size: 12px; color: var(--green-dark); }
     .drive-status-text strong { font-weight: 600; }
-
-    .upload-zone {
-      border: 1.5px dashed var(--border-strong);
-      border-radius: var(--radius-sm);
-      padding: 1.25rem;
-      text-align: center;
-      cursor: pointer;
-      background: var(--bg);
-      transition: all 0.15s;
-    }
-
+    .upload-zone { border: 1.5px dashed var(--border-strong); border-radius: var(--radius-sm); padding: 1.25rem; text-align: center; cursor: pointer; background: var(--bg); transition: all 0.15s; }
     .upload-zone:hover { border-color: var(--green); background: var(--green-light); }
-
     .upload-zone i { font-size: 22px; color: var(--text-faint); display: block; margin-bottom: 0.4rem; }
-
-    .upload-zone .drop-label { font-size: 13px; color: var(--text-muted); }
-
-    .imgs-loaded {
-      margin-top: 0.5rem;
-      font-size: 12px;
-      color: var(--green-dark);
-      background: var(--green-light);
-      border-radius: var(--radius-sm);
-      padding: 0.4rem 0.6rem;
-    }
-
-    .preview-wrap {
-      border: 0.5px solid var(--border);
-      border-radius: var(--radius-sm);
-      overflow: hidden;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 12px;
-    }
-
-    thead th {
-      background: var(--bg);
-      padding: 7px 10px;
-      text-align: left;
-      font-size: 10px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--text-muted);
-      border-bottom: 0.5px solid var(--border);
-    }
-
-    tbody td {
-      padding: 7px 10px;
-      border-bottom: 0.5px solid var(--border);
-      color: var(--text);
-      vertical-align: middle;
-    }
-
+    .imgs-loaded { margin-top: 0.5rem; font-size: 12px; color: var(--green-dark); background: var(--green-light); border-radius: var(--radius-sm); padding: 0.4rem 0.6rem; }
+    .preview-wrap { border: 0.5px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    thead th { background: var(--bg); padding: 7px 10px; text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); border-bottom: 0.5px solid var(--border); }
+    tbody td { padding: 7px 10px; border-bottom: 0.5px solid var(--border); vertical-align: middle; }
     tbody tr:last-child td { border-bottom: none; }
-
     .code-cell { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px; color: var(--text-muted); }
-
-    .match-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 2px 7px;
-      border-radius: 20px;
-      font-size: 10px;
-      font-weight: 600;
-    }
-
-    .match-badge.found { background: var(--green-light); color: var(--green-dark); }
-    .match-badge.missing { background: var(--red-light); color: var(--red); }
+    .match-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 20px; font-size: 10px; font-weight: 600; }
     .match-badge.pending { background: var(--amber-light); color: var(--amber); }
-
-    .preview-footer {
-      font-size: 11px;
-      color: var(--text-faint);
-      text-align: right;
-      margin-top: 0.4rem;
-    }
-
-    .generate-btn {
-      width: 100%;
-      height: 48px;
-      background: var(--text);
-      color: #fff;
-      border: none;
-      border-radius: var(--radius);
-      font-size: 15px;
-      font-weight: 600;
-      font-family: inherit;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      margin-top: 0.75rem;
-      transition: opacity 0.15s, transform 0.1s;
-    }
-
+    .match-badge.uploaded { background: var(--green-light); color: var(--green-dark); }
+    .match-badge.missing { background: var(--red-light); color: var(--red); }
+    .preview-footer { font-size: 11px; color: var(--text-faint); text-align: right; margin-top: 0.4rem; }
+    .generate-btn { width: 100%; height: 48px; background: var(--text); color: #fff; border: none; border-radius: var(--radius); font-size: 15px; font-weight: 600; font-family: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 0.75rem; transition: opacity 0.15s, transform 0.1s; }
     .generate-btn:hover:not(:disabled) { opacity: 0.85; }
     .generate-btn:active:not(:disabled) { transform: scale(0.99); }
     .generate-btn:disabled { opacity: 0.3; cursor: not-allowed; }
-
-    .progress-wrap {
-      margin-top: 1rem;
-      display: none;
-    }
-
-    .progress-track {
-      height: 4px;
-      background: var(--border);
-      border-radius: 2px;
-      overflow: hidden;
-      margin-bottom: 0.5rem;
-    }
-
-    .progress-fill {
-      height: 100%;
-      background: var(--green);
-      width: 0%;
-      transition: width 0.3s ease;
-      border-radius: 2px;
-    }
-
-    .progress-label {
-      font-size: 12px;
-      color: var(--text-muted);
-      text-align: center;
-    }
-
-    .result {
-      background: var(--green-light);
-      border: 0.5px solid #5DCAA5;
-      border-radius: var(--radius);
-      padding: 1.25rem;
-      margin-top: 0.75rem;
-      display: none;
-    }
-
-    .result-title {
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--green-dark);
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin-bottom: 1rem;
-    }
-
-    .result-stats {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
-      margin-bottom: 1rem;
-    }
-
-    .stat {
-      background: #fff;
-      border-radius: var(--radius-sm);
-      padding: 0.65rem;
-      text-align: center;
-    }
-
-    .stat-n {
-      font-size: 22px;
-      font-weight: 700;
-      color: var(--text);
-      line-height: 1;
-    }
-
-    .stat-l {
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--text-muted);
-      margin-top: 3px;
-    }
-
-    .dl-btn {
-      width: 100%;
-      height: 42px;
-      background: var(--green-dark);
-      color: #fff;
-      border: none;
-      border-radius: var(--radius-sm);
-      font-size: 14px;
-      font-weight: 600;
-      font-family: inherit;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 7px;
-      transition: background 0.15s;
-    }
-
+    .progress-wrap { margin-top: 1rem; display: none; }
+    .progress-track { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin-bottom: 0.5rem; }
+    .progress-fill { height: 100%; background: var(--green); width: 0%; transition: width 0.4s ease; border-radius: 2px; }
+    .progress-label { font-size: 12px; color: var(--text-muted); text-align: center; }
+    .result { background: var(--green-light); border: 0.5px solid #5DCAA5; border-radius: var(--radius); padding: 1.25rem; margin-top: 0.75rem; display: none; }
+    .result-title { font-size: 14px; font-weight: 600; color: var(--green-dark); display: flex; align-items: center; gap: 6px; margin-bottom: 1rem; }
+    .result-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 1rem; }
+    .stat { background: #fff; border-radius: var(--radius-sm); padding: 0.65rem; text-align: center; }
+    .stat-n { font-size: 22px; font-weight: 700; line-height: 1; }
+    .stat-l { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-top: 3px; }
+    .dl-btn { width: 100%; height: 42px; background: var(--green-dark); color: #fff; border: none; border-radius: var(--radius-sm); font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 7px; transition: background 0.15s; }
     .dl-btn:hover { background: #085041; }
-
-    .dl-note {
-      font-size: 11px;
-      color: var(--green-dark);
-      text-align: center;
-      margin-top: 0.5rem;
-      opacity: 0.7;
-    }
-
-    .missing-warn {
-      background: var(--amber-light);
-      border: 0.5px solid #EF9F27;
-      border-radius: var(--radius-sm);
-      padding: 0.6rem 0.75rem;
-      font-size: 12px;
-      color: var(--amber);
-      margin-top: 0.75rem;
-      display: none;
-    }
-
+    .dl-note { font-size: 11px; color: var(--green-dark); text-align: center; margin-top: 0.5rem; opacity: 0.7; }
+    .error-box { background: var(--red-light); border: 0.5px solid var(--red); border-radius: var(--radius-sm); padding: 0.75rem; font-size: 13px; color: var(--red); margin-top: 0.75rem; display: none; }
+    .missing-warn { background: var(--amber-light); border: 0.5px solid #EF9F27; border-radius: var(--radius-sm); padding: 0.6rem 0.75rem; font-size: 12px; color: var(--amber); margin-top: 0.75rem; display: none; }
     input[type=file] { display: none; }
-
-    @media (max-width: 480px) {
-      .col-grid { grid-template-columns: 1fr; }
-      .result-stats { grid-template-columns: repeat(3, 1fr); }
-    }
   </style>
 </head>
 <body>
@@ -515,14 +97,10 @@
       <p class="subtitle">Upload a spreadsheet, embed product images, download ready-to-send Excel.</p>
     </header>
 
-    <!-- Step 1: Upload spreadsheet -->
     <div class="card" id="card1">
       <div class="card-header">
         <div class="step-badge" id="badge1">1</div>
-        <div>
-          <div class="card-title">Upload your spreadsheet</div>
-          <div class="card-desc">.xlsx or .csv — one product per row</div>
-        </div>
+        <div><div class="card-title">Upload your spreadsheet</div><div class="card-desc">.xlsx or .csv — one product per row</div></div>
       </div>
       <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
         <i class="ti ti-table"></i>
@@ -537,67 +115,43 @@
       <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" onchange="handleFile(this)">
     </div>
 
-    <!-- Step 2: Column settings -->
     <div class="card locked" id="card2">
       <div class="card-header">
         <div class="step-badge" id="badge2">2</div>
-        <div>
-          <div class="card-title">Column settings</div>
-          <div class="card-desc">Where are your product codes, and where should images go?</div>
-        </div>
+        <div><div class="card-title">Column settings</div><div class="card-desc">Where are your product codes, and where should images go?</div></div>
       </div>
       <div class="col-grid">
         <div class="field">
           <label>Product code column</label>
           <select id="codeCol" onchange="buildPreview()">
-            <option value="0">Column A</option>
-            <option value="1">Column B</option>
-            <option value="2">Column C</option>
-            <option value="3">Column D</option>
-            <option value="4">Column E</option>
-            <option value="5">Column F</option>
+            <option value="0">Column A</option><option value="1">Column B</option><option value="2">Column C</option>
+            <option value="3">Column D</option><option value="4">Column E</option><option value="5">Column F</option>
           </select>
         </div>
         <div class="field">
           <label>Image column</label>
           <select id="imgCol">
-            <option value="0">Column A</option>
-            <option value="1" selected>Column B</option>
-            <option value="2">Column C</option>
-            <option value="3">Column D</option>
-            <option value="4">Column E</option>
-            <option value="5">Column F</option>
-            <option value="6">Column G</option>
-            <option value="7">Column H</option>
+            <option value="0">Column A</option><option value="1" selected>Column B</option><option value="2">Column C</option>
+            <option value="3">Column D</option><option value="4">Column E</option><option value="5">Column F</option>
+            <option value="6">Column G</option><option value="7">Column H</option>
           </select>
         </div>
       </div>
     </div>
 
-    <!-- Step 3: Image source -->
     <div class="card locked" id="card3">
       <div class="card-header">
         <div class="step-badge" id="badge3">3</div>
-        <div>
-          <div class="card-title">Image source</div>
-          <div class="card-desc">Use the main library or upload your own images</div>
-        </div>
+        <div><div class="card-title">Image source</div><div class="card-desc">Use the main library or upload your own images</div></div>
       </div>
       <div class="source-tabs">
-        <button class="source-tab active" id="tabDrive" onclick="setSource('drive')">
-          <i class="ti ti-brand-google-drive"></i> Main library
-        </button>
-        <button class="source-tab" id="tabUpload" onclick="setSource('upload')">
-          <i class="ti ti-folder-up"></i> Upload images
-        </button>
+        <button class="source-tab active" id="tabDrive" onclick="setSource('drive')"><i class="ti ti-brand-google-drive"></i> Main library</button>
+        <button class="source-tab" id="tabUpload" onclick="setSource('upload')"><i class="ti ti-folder-up"></i> Upload images</button>
       </div>
       <div id="panelDrive">
         <div class="drive-status">
           <div class="pulse"></div>
-          <div class="drive-status-text">
-            <strong>One for Fun image library connected</strong><br>
-            Always up to date · images matched by product code
-          </div>
+          <div class="drive-status-text"><strong>One for Fun image library connected</strong><br>Always up to date · images matched by product code</div>
         </div>
       </div>
       <div id="panelUpload" style="display:none">
@@ -610,47 +164,32 @@
       </div>
     </div>
 
-    <!-- Step 4: Preview -->
     <div class="card locked" id="card4">
       <div class="card-header">
         <div class="step-badge" id="badge4">4</div>
-        <div>
-          <div class="card-title">Preview</div>
-          <div class="card-desc">Check your products before generating</div>
-        </div>
+        <div><div class="card-title">Preview</div><div class="card-desc">Check your products before generating</div></div>
       </div>
       <div class="preview-wrap">
         <table>
-          <thead>
-            <tr>
-              <th>Product code</th>
-              <th>Description</th>
-              <th>Image</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Product code</th><th>Description</th><th>Image</th></tr></thead>
           <tbody id="previewBody"></tbody>
         </table>
       </div>
       <div class="preview-footer" id="previewFooter"></div>
     </div>
 
-    <!-- Generate button -->
     <button class="generate-btn" id="generateBtn" disabled onclick="generate()">
       <i class="ti ti-photo-check"></i> Generate Excel with images
     </button>
 
-    <!-- Progress -->
     <div class="progress-wrap" id="progressWrap">
-      <div class="progress-track">
-        <div class="progress-fill" id="progressFill"></div>
-      </div>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
       <div class="progress-label" id="progressLabel">Starting…</div>
     </div>
 
-    <!-- Missing images warning -->
+    <div class="error-box" id="errorBox"></div>
     <div class="missing-warn" id="missingWarn"></div>
 
-    <!-- Result -->
     <div class="result" id="result">
       <div class="result-title"><i class="ti ti-circle-check"></i> File ready to download</div>
       <div class="result-stats">
@@ -664,12 +203,8 @@
   </div>
 
   <script>
-    let wb = null, ws = null, sourceFileName = '';
-    let imgSource = 'drive';
-    let uploadedImgs = {};
-    let generatedBlob = null;
+    let parsedRows = [], sourceFileName = '', imgSource = 'drive', uploadedImgs = {}, generatedBlob = null, sheetName = 'Products';
 
-    // ── File upload ──────────────────────────────────────────────
     function handleFile(input) {
       const file = input.files[0];
       if (!file) return;
@@ -677,26 +212,34 @@
       document.getElementById('fileName').textContent = file.name;
       document.getElementById('filePill').style.display = 'flex';
       document.getElementById('dropZone').style.display = 'none';
-      markDone('badge1');
-
       const reader = new FileReader();
       reader.onload = e => {
         try {
-          wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
-          ws = wb.Sheets[wb.SheetNames[0]];
+          const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+          sheetName = wb.SheetNames[0];
+          const ws = wb.Sheets[sheetName];
+          const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1');
+          parsedRows = [];
+          for (let r = range.s.r; r <= range.e.r; r++) {
+            const row = [];
+            for (let c = range.s.c; c <= range.e.c; c++) {
+              const cell = ws[XLSX.utils.encode_cell({ r, c })];
+              row.push(cell ? cell.v : '');
+            }
+            parsedRows.push(row);
+          }
+          markDone('badge1');
           unlock('card2'); unlock('card3'); unlock('card4');
           markDone('badge2'); markDone('badge3'); markDone('badge4');
           buildPreview();
           document.getElementById('generateBtn').disabled = false;
-        } catch(err) {
-          alert('Could not read file. Please use .xlsx or .csv format.');
-        }
+        } catch(err) { alert('Could not read file. Please use .xlsx or .csv format.'); }
       };
       reader.readAsArrayBuffer(file);
     }
 
     function clearFile() {
-      wb = ws = null; sourceFileName = '';
+      parsedRows = []; sourceFileName = '';
       document.getElementById('fileInput').value = '';
       document.getElementById('filePill').style.display = 'none';
       document.getElementById('dropZone').style.display = 'block';
@@ -706,24 +249,27 @@
       document.getElementById('generateBtn').disabled = true;
       document.getElementById('result').style.display = 'none';
       document.getElementById('progressWrap').style.display = 'none';
+      document.getElementById('errorBox').style.display = 'none';
       document.getElementById('missingWarn').style.display = 'none';
     }
 
-    // ── Image upload ─────────────────────────────────────────────
     function handleImages(input) {
       uploadedImgs = {};
-      Array.from(input.files).forEach(f => {
+      const promises = Array.from(input.files).map(f => new Promise(res => {
         const code = f.name.replace(/\.[^.]+$/, '').trim().toUpperCase();
-        uploadedImgs[code] = f;
+        const fr = new FileReader();
+        fr.onload = () => { uploadedImgs[code] = fr.result.split(',')[1]; res(); };
+        fr.readAsDataURL(f);
+      }));
+      Promise.all(promises).then(() => {
+        const count = Object.keys(uploadedImgs).length;
+        const el = document.getElementById('imgsLoaded');
+        el.textContent = `${count} image${count !== 1 ? 's' : ''} loaded`;
+        el.style.display = 'block';
+        buildPreview();
       });
-      const count = Object.keys(uploadedImgs).length;
-      const el = document.getElementById('imgsLoaded');
-      el.textContent = `${count} image${count !== 1 ? 's' : ''} loaded`;
-      el.style.display = 'block';
-      buildPreview();
     }
 
-    // ── Source toggle ────────────────────────────────────────────
     function setSource(src) {
       imgSource = src;
       document.getElementById('tabDrive').classList.toggle('active', src === 'drive');
@@ -733,58 +279,32 @@
       buildPreview();
     }
 
-    // ── Preview ──────────────────────────────────────────────────
-    function getRows() {
-      if (!ws) return [];
-      const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1');
-      const codeCol = parseInt(document.getElementById('codeCol').value);
-      const rows = [];
-      for (let r = range.s.r; r <= range.e.r; r++) {
-        const cell = ws[XLSX.utils.encode_cell({ r, c: codeCol })];
-        if (!cell) continue;
-        const code = String(cell.v).trim();
-        if (!code || code.toLowerCase() === 'code') continue;
-        const descCell = ws[XLSX.utils.encode_cell({ r, c: codeCol === 0 ? 1 : 0 })];
-        rows.push({ r, code, desc: descCell ? String(descCell.v) : '' });
-      }
-      return rows;
-    }
-
     function buildPreview() {
-      const rows = getRows();
+      if (!parsedRows.length) return;
+      const codeCol = parseInt(document.getElementById('codeCol').value);
       const tbody = document.getElementById('previewBody');
       tbody.innerHTML = '';
-      const shown = rows.slice(0, 8);
-
-      shown.forEach(({ code, desc }) => {
-        let status, label;
-        if (imgSource === 'drive') {
-          status = 'pending'; label = 'Will fetch from Drive';
-        } else {
-          const found = !!uploadedImgs[code.toUpperCase()];
-          status = found ? 'found' : 'missing';
-          label = found ? 'Uploaded' : 'Not found';
-        }
+      const dataRows = parsedRows.filter(row => { const c = String(row[codeCol]||'').trim(); return c && c.toLowerCase() !== 'code'; });
+      dataRows.slice(0, 8).forEach(row => {
+        const code = String(row[codeCol]||'').trim();
+        const desc = String(row[codeCol === 0 ? 1 : 0]||'');
+        let status = 'pending', label = 'Will fetch from Drive';
+        if (imgSource === 'upload') { const found = !!uploadedImgs[code.toUpperCase()]; status = found ? 'uploaded' : 'missing'; label = found ? 'Uploaded' : 'Not found'; }
         const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td class="code-cell">${code}</td>
-          <td style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#555;">${desc}</td>
-          <td><span class="match-badge ${status}">${label}</span></td>`;
+        tr.innerHTML = `<td class="code-cell">${code}</td><td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#555">${desc}</td><td><span class="match-badge ${status}">${label}</span></td>`;
         tbody.appendChild(tr);
       });
-
-      document.getElementById('previewFooter').textContent =
-        rows.length > 8 ? `Showing 8 of ${rows.length} products` : `${rows.length} products`;
+      document.getElementById('previewFooter').textContent = dataRows.length > 8 ? `Showing 8 of ${dataRows.length} products` : `${dataRows.length} products`;
     }
 
-    // ── Generate ─────────────────────────────────────────────────
     async function generate() {
-      const rows = getRows();
-      if (!rows.length) return;
+      if (!parsedRows.length) return;
+      const codeColIndex = parseInt(document.getElementById('codeCol').value);
+      const imgColIndex = parseInt(document.getElementById('imgCol').value);
 
-      const imgColIdx = parseInt(document.getElementById('imgCol').value);
       document.getElementById('generateBtn').disabled = true;
       document.getElementById('result').style.display = 'none';
+      document.getElementById('errorBox').style.display = 'none';
       document.getElementById('missingWarn').style.display = 'none';
       document.getElementById('progressWrap').style.display = 'block';
 
@@ -793,171 +313,76 @@
         document.getElementById('progressLabel').textContent = label;
       };
 
-      const newWb = XLSX.utils.book_new();
-      const newWs = Object.assign({}, ws);
-      const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1');
-
-      // Set column widths
-      if (!newWs['!cols']) newWs['!cols'] = [];
-      newWs['!cols'][imgColIdx] = { wpx: 80 };
-
-      // Set row heights and track images
-      if (!newWs['!rows']) newWs['!rows'] = [];
-      const wsImages = [];
-      let matched = 0;
-      const missing = [];
-
-      for (let i = 0; i < rows.length; i++) {
-        const { r, code } = rows[i];
-        const pct = Math.round((i / rows.length) * 88) + 5;
-        setProgress(pct, `Processing ${i + 1} of ${rows.length}: ${code}`);
-
-        let imgData = null;
-
-        if (imgSource === 'drive') {
-          imgData = await fetchFromDrive(code);
-        } else {
-          const file = uploadedImgs[code.toUpperCase()];
-          if (file) imgData = await fileToBase64(file);
-        }
-
-        if (imgData) {
-          const optimised = await resizeImage(imgData, 200, 200, 0.75);
-          const b64clean = optimised.split(',')[1];
-          wsImages.push({ row: r, col: imgColIdx, b64: b64clean });
-          newWs['!rows'][r] = { hpx: 60 };
-          matched++;
-        } else {
-          missing.push(code);
-        }
-      }
-
-      setProgress(95, 'Building Excel file…');
-
-      // Embed images using XLSX image extension
-      if (wsImages.length > 0) {
-        if (!newWs['!images']) newWs['!images'] = [];
-        wsImages.forEach(({ row, col, b64 }) => {
-          newWs['!images'].push({
-            name: 'image.jpg',
-            data: b64,
-            opts: { base64: true },
-            position: {
-              type: 'twoCellAnchor',
-              attrs: { editAs: 'oneCell' },
-              from: { col, row },
-              to: { col: col + 1, row: row + 1 }
-            }
-          });
-        });
-      }
-
-      XLSX.utils.book_append_sheet(newWb, newWs, wb.SheetNames[0]);
-      const out = XLSX.write(newWb, { bookType: 'xlsx', type: 'array' });
-      generatedBlob = new Blob([out], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-      });
-
-      setProgress(100, 'Done');
-
-      const sizeMB = (generatedBlob.size / 1024 / 1024).toFixed(1);
-      document.getElementById('rProducts').textContent = rows.length;
-      document.getElementById('rMatched').textContent = matched;
-      document.getElementById('rSize').textContent = sizeMB + ' MB';
-      document.getElementById('result').style.display = 'block';
-
-      if (missing.length > 0) {
-        const warn = document.getElementById('missingWarn');
-        warn.textContent = `${missing.length} product${missing.length > 1 ? 's' : ''} had no matching image: ${missing.slice(0, 6).join(', ')}${missing.length > 6 ? '…' : ''}`;
-        warn.style.display = 'block';
-      }
-
-      document.getElementById('dlBtn').onclick = downloadFile;
-      document.getElementById('generateBtn').disabled = false;
-    }
-
-    function downloadFile() {
-      if (!generatedBlob) return;
-      const url = URL.createObjectURL(generatedBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = sourceFileName.replace(/\.[^.]+$/, '') + '_images.xlsx';
-      a.click();
-      URL.revokeObjectURL(url);
-    }
-
-    // ── Drive fetch via Vercel API ────────────────────────────────
-    async function fetchFromDrive(code) {
       try {
-        const res = await fetch(`/api/drive?code=${encodeURIComponent(code)}`);
-        if (!res.ok) return null;
-        const blob = await res.blob();
-        return await blobToDataUrl(blob);
-      } catch(e) { return null; }
-    }
+        setProgress(15, imgSource === 'drive' ? 'Fetching images from Drive and building Excel…' : 'Building Excel with uploaded images…');
 
-    // ── Image helpers ─────────────────────────────────────────────
-    function blobToDataUrl(blob) {
-      return new Promise((res, rej) => {
-        const fr = new FileReader();
-        fr.onload = () => res(fr.result);
-        fr.onerror = rej;
-        fr.readAsDataURL(blob);
-      });
-    }
+        const payload = { rows: parsedRows, codeColIndex, imgColIndex, sheetName };
+        if (imgSource === 'upload') payload.imageMap = uploadedImgs;
 
-    function fileToBase64(file) {
-      return new Promise((res, rej) => {
-        const fr = new FileReader();
-        fr.onload = () => res(fr.result);
-        fr.onerror = rej;
-        fr.readAsDataURL(file);
-      });
-    }
+        const response = await fetch('/api/drive', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
 
-    function resizeImage(dataUrl, maxW, maxH, quality) {
-      return new Promise(res => {
-        const img = new Image();
-        img.onload = () => {
-          let w = img.width, h = img.height;
-          if (w > maxW) { h = h * maxW / w; w = maxW; }
-          if (h > maxH) { w = w * maxH / h; h = maxH; }
-          const c = document.createElement('canvas');
-          c.width = Math.round(w); c.height = Math.round(h);
-          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-          res(c.toDataURL('image/jpeg', quality));
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({ error: 'Unknown server error' }));
+          throw new Error(err.detail || err.error || 'Server error');
+        }
+
+        setProgress(90, 'Downloading file…');
+
+        const matched = parseInt(response.headers.get('X-Matched') || '0');
+        const missing = JSON.parse(response.headers.get('X-Missing') || '[]');
+        generatedBlob = await response.blob();
+
+        const dataRows = parsedRows.filter(row => { const c = String(row[codeColIndex]||'').trim(); return c && c.toLowerCase() !== 'code'; });
+        const sizeMB = (generatedBlob.size / 1024 / 1024).toFixed(1);
+
+        setProgress(100, 'Done');
+        document.getElementById('rProducts').textContent = dataRows.length;
+        document.getElementById('rMatched').textContent = matched;
+        document.getElementById('rSize').textContent = sizeMB + ' MB';
+        document.getElementById('result').style.display = 'block';
+        document.getElementById('generateBtn').disabled = false;
+
+        if (missing.length > 0) {
+          const warn = document.getElementById('missingWarn');
+          warn.textContent = `${missing.length} product${missing.length > 1 ? 's' : ''} had no image: ${missing.slice(0,6).join(', ')}${missing.length > 6 ? '…' : ''}`;
+          warn.style.display = 'block';
+        }
+
+        document.getElementById('dlBtn').onclick = () => {
+          const url = URL.createObjectURL(generatedBlob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = sourceFileName.replace(/\.[^.]+$/, '') + '_images.xlsx';
+          a.click();
+          URL.revokeObjectURL(url);
         };
-        img.src = dataUrl;
-      });
+
+      } catch(err) {
+        document.getElementById('progressWrap').style.display = 'none';
+        const eb = document.getElementById('errorBox');
+        eb.textContent = 'Error: ' + err.message;
+        eb.style.display = 'block';
+        document.getElementById('generateBtn').disabled = false;
+      }
     }
 
-    // ── Drag and drop ─────────────────────────────────────────────
     const dz = document.getElementById('dropZone');
     dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
     dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
     dz.addEventListener('drop', e => {
       e.preventDefault(); dz.classList.remove('dragover');
       const f = e.dataTransfer.files[0];
-      if (f) {
-        const dt = new DataTransfer(); dt.items.add(f);
-        document.getElementById('fileInput').files = dt.files;
-        handleFile(document.getElementById('fileInput'));
-      }
+      if (f) { const dt = new DataTransfer(); dt.items.add(f); document.getElementById('fileInput').files = dt.files; handleFile(document.getElementById('fileInput')); }
     });
 
-    // ── Helpers ───────────────────────────────────────────────────
     function unlock(id) { document.getElementById(id).classList.remove('locked'); }
     function lock(id) { document.getElementById(id).classList.add('locked'); }
-    function markDone(id) {
-      const el = document.getElementById(id);
-      el.classList.add('done');
-      el.innerHTML = '<i class="ti ti-check" style="font-size:12px;"></i>';
-    }
-    function resetBadge(id) {
-      const el = document.getElementById(id);
-      el.classList.remove('done');
-      el.innerHTML = id.replace('badge','');
-    }
+    function markDone(id) { const el = document.getElementById(id); el.classList.add('done'); el.innerHTML = '<i class="ti ti-check" style="font-size:12px;"></i>'; }
+    function resetBadge(id) { const el = document.getElementById(id); el.classList.remove('done'); el.innerHTML = id.replace('badge',''); }
   </script>
 </body>
 </html>
