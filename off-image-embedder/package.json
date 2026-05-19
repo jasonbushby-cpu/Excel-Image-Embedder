@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "One for Fun product image embedder tool",
   "dependencies": {
-    "googleapis": "^140.0.0"
+    "googleapis": "^140.0.0",
+    "exceljs": "^4.4.0"
   }
 }
