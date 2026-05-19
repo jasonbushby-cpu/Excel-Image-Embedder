@@ -1,0 +1,8 @@
+{
+  "name": "off-image-embedder",
+  "version": "1.0.0",
+  "description": "One for Fun product image embedder tool",
+  "dependencies": {
+    "googleapis": "^140.0.0"
+  }
+}
