@@ -56,7 +56,7 @@
     .upload-zone:hover { border-color: var(--green); background: var(--green-light); }
     .upload-zone i { font-size: 22px; color: var(--text-faint); display: block; margin-bottom: 0.4rem; }
     .imgs-loaded { margin-top: 0.5rem; font-size: 12px; color: var(--green-dark); background: var(--green-light); border-radius: var(--radius-sm); padding: 0.4rem 0.6rem; }
-    .preview-wrap { border: 0.5px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+    .preview-wrap { border: 0.5px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; max-height: 320px; overflow-y: auto; }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
     thead th { background: var(--bg); padding: 7px 10px; text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); border-bottom: 0.5px solid var(--border); }
     tbody td { padding: 7px 10px; border-bottom: 0.5px solid var(--border); vertical-align: middle; }
@@ -312,16 +312,36 @@
       const tbody = document.getElementById('previewBody');
       tbody.innerHTML = '';
       const dataRows = parsedRows.filter(row => { const c = String(row[codeCol]||'').trim(); const ok = /^\d+$/.test(c) || /^SV\d+$/i.test(c) || /^B\d+-\d+$/i.test(c); return ok; });
-      dataRows.slice(0, 8).forEach(row => {
+
+      // Split into missing and found, show missing first
+      const missingRows = [];
+      const foundRows = [];
+      dataRows.forEach(row => {
         const code = String(row[codeCol]||'').trim();
         const desc = String(row[codeCol === 0 ? 1 : 0]||'');
-        let status = 'pending', label = 'Will fetch from Drive';
-        if (imgSource === 'upload') { const found = !!uploadedImgs[code.toUpperCase()]; status = found ? 'uploaded' : 'missing'; label = found ? 'Uploaded' : 'Not found'; }
+        let status, label;
+        if (imgSource === 'upload') {
+          const found = !!uploadedImgs[code.toUpperCase()];
+          status = found ? 'uploaded' : 'missing';
+          label = found ? 'Uploaded' : 'Not found';
+          (found ? foundRows : missingRows).push({ code, desc, status, label });
+        } else {
+          foundRows.push({ code, desc, status: 'pending', label: 'Will fetch from Drive' });
+        }
+      });
+
+      // Render missing first, then found
+      [...missingRows, ...foundRows].forEach(({ code, desc, status, label }) => {
         const tr = document.createElement('tr');
         tr.innerHTML = `<td class="code-cell">${code}</td><td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#555">${desc}</td><td><span class="match-badge ${status}">${label}</span></td>`;
         tbody.appendChild(tr);
       });
-      document.getElementById('previewFooter').textContent = dataRows.length > 8 ? `Showing 8 of ${dataRows.length} products` : `${dataRows.length} products`;
+
+      const total = dataRows.length;
+      const missingCount = missingRows.length;
+      let footerText = `${total} product${total !== 1 ? 's' : ''}`;
+      if (missingCount > 0) footerText += ` · ${missingCount} missing`;
+      document.getElementById('previewFooter').textContent = footerText;
     }
 
     async function generate() {
