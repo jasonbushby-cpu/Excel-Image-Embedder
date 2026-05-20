@@ -129,9 +129,10 @@ module.exports = async function handler(req, res) {
 
     for (let rowIdx = 1; rowIdx < rows.length; rowIdx++) {
       const code = String(rows[rowIdx][effectiveCodeCol] || '').trim();
-      // Valid: pure numbers, SV+numbers, B+numbers-numbers
-      const isValid = /^\d+$/.test(code) || /^SV\d+$/i.test(code) || /^B\d+-\d+$/i.test(code);
-      if (!isValid) continue;
+      // Skip empty cells and obvious header words
+      if (!code) continue;
+      const lc = code.toLowerCase();
+      if (lc === 'code' || lc === 'product code' || lc === 'item no' || lc === 'item no.' || lc === 'sku') continue;
 
       try {
         let buffer, extension;
