@@ -95,6 +95,7 @@
       <div class="brand">One for Fun</div>
       <h1>Image Embedder</h1>
       <p class="subtitle">Upload a spreadsheet, embed product images, download ready-to-send Excel.</p>
+      <p style="font-size:11px; color:var(--text-faint); margin-top:0.4rem;">Tip: make sure your product code column contains only product codes — no merged cells or section titles.</p>
     </header>
 
     <div class="card" id="card1">
@@ -311,7 +312,7 @@
       const codeCol = parseInt(document.getElementById('codeCol').value);
       const tbody = document.getElementById('previewBody');
       tbody.innerHTML = '';
-      const dataRows = parsedRows.filter(row => { const c = String(row[codeCol]||'').trim(); const ok = /^\d+$/.test(c) || /^SV\d+$/i.test(c) || /^B\d+-\d+$/i.test(c); return ok; });
+      const dataRows = parsedRows.filter(row => { const c = String(row[codeCol]||'').trim(); const skip = ['code','product code','item no','item no.','sku']; return c && !skip.includes(c.toLowerCase()); });
 
       // Split into missing and found, show missing first
       const missingRows = [];
@@ -392,7 +393,7 @@
           warn.style.display = 'block';
         }
 
-        const dataRows = parsedRows.filter(row => { const c = String(row[codeColIndex]||'').trim(); const ok = /^\d+$/.test(c) || /^SV\d+$/i.test(c) || /^B\d+-\d+$/i.test(c); return ok; });
+        const dataRows = parsedRows.filter(row => { const c = String(row[codeColIndex]||'').trim(); const skip = ['code','product code','item no','item no.','sku']; return c && !skip.includes(c.toLowerCase()); });
         const sizeMB = (generatedBlob.size / 1024 / 1024).toFixed(1);
 
         setProgress(100, 'Done');
