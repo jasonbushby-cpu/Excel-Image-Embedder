@@ -139,9 +139,22 @@
       </div>
     </div>
 
+    <div class="card locked" id="card2b">
+      <div class="card-header">
+        <div class="step-badge" id="badge2b">3</div>
+        <div><div class="card-title">File size</div><div class="card-desc">Choose quality based on how you'll use the file</div></div>
+      </div>
+      <div class="source-tabs" style="grid-template-columns:1fr 1fr 1fr;">
+        <button class="source-tab" id="presetEmail" onclick="setPreset('email')"><i class="ti ti-mail"></i> Email</button>
+        <button class="source-tab active" id="presetStandard" onclick="setPreset('standard')"><i class="ti ti-file-spreadsheet"></i> Standard</button>
+        <button class="source-tab" id="presetPresentation" onclick="setPreset('presentation')" style="border-right:none; border-left: 0.5px solid var(--border-strong);"><i class="ti ti-presentation"></i> Presentation</button>
+      </div>
+      <div id="presetDesc" style="font-size:12px; color:var(--text-muted); text-align:center; margin-top:0.25rem;">Good quality · keeps file under 10MB</div>
+    </div>
+
     <div class="card locked" id="card3">
       <div class="card-header">
-        <div class="step-badge" id="badge3">3</div>
+        <div class="step-badge" id="badge3">4</div>
         <div><div class="card-title">Image source</div><div class="card-desc">Use the main library or upload your own images</div></div>
       </div>
       <div class="source-tabs">
@@ -166,7 +179,7 @@
 
     <div class="card locked" id="card4">
       <div class="card-header">
-        <div class="step-badge" id="badge4">4</div>
+        <div class="step-badge" id="badge4">5</div>
         <div><div class="card-title">Preview</div><div class="card-desc">Check your products before generating</div></div>
       </div>
       <div class="preview-wrap">
@@ -203,7 +216,21 @@
   </div>
 
   <script>
-    let parsedRows = [], sourceFileName = '', imgSource = 'drive', uploadedImgs = {}, generatedBlob = null, sheetName = 'Products';
+    let parsedRows = [], sourceFileName = '', imgSource = 'drive', uploadedImgs = {}, generatedBlob = null, sheetName = 'Products', qualityPreset = 'standard';
+
+    const presetDescs = {
+      email: 'Smallest file size · ideal for email under 5MB',
+      standard: 'Good quality · keeps file under 10MB',
+      presentation: 'High quality · for decks and print',
+    };
+
+    function setPreset(p) {
+      qualityPreset = p;
+      ['email','standard','presentation'].forEach(id => {
+        document.getElementById('preset' + id.charAt(0).toUpperCase() + id.slice(1)).classList.toggle('active', id === p);
+      });
+      document.getElementById('presetDesc').textContent = presetDescs[p];
+    }
 
     function handleFile(input) {
       const file = input.files[0];
@@ -229,8 +256,8 @@
             parsedRows.push(row);
           }
           markDone('badge1');
-          unlock('card2'); unlock('card3'); unlock('card4');
-          markDone('badge2'); markDone('badge3'); markDone('badge4');
+          unlock('card2'); unlock('card2b'); unlock('card3'); unlock('card4');
+          markDone('badge2'); markDone('badge2b'); markDone('badge3'); markDone('badge4');
           buildPreview();
           document.getElementById('generateBtn').disabled = false;
         } catch(err) { alert('Could not read file. Please use .xlsx or .csv format.'); }
@@ -244,8 +271,8 @@
       document.getElementById('filePill').style.display = 'none';
       document.getElementById('dropZone').style.display = 'block';
       resetBadge('badge1');
-      lock('card2'); lock('card3'); lock('card4');
-      resetBadge('badge2'); resetBadge('badge3'); resetBadge('badge4');
+      lock('card2'); lock('card2b'); lock('card3'); lock('card4');
+      resetBadge('badge2'); resetBadge('badge2b'); resetBadge('badge3'); resetBadge('badge4');
       document.getElementById('generateBtn').disabled = true;
       document.getElementById('result').style.display = 'none';
       document.getElementById('progressWrap').style.display = 'none';
@@ -284,7 +311,7 @@
       const codeCol = parseInt(document.getElementById('codeCol').value);
       const tbody = document.getElementById('previewBody');
       tbody.innerHTML = '';
-      const dataRows = parsedRows.filter(row => { const c = String(row[codeCol]||'').trim(); return c && c.toLowerCase() !== 'code'; });
+      const dataRows = parsedRows.filter(row => { const c = String(row[codeCol]||'').trim(); const ok = /^\d+$/.test(c) || /^SV\d+$/i.test(c) || /^B\d+-\d+$/i.test(c); return ok; });
       dataRows.slice(0, 8).forEach(row => {
         const code = String(row[codeCol]||'').trim();
         const desc = String(row[codeCol === 0 ? 1 : 0]||'');
@@ -316,7 +343,7 @@
       try {
         setProgress(15, imgSource === 'drive' ? 'Fetching images from Drive and building Excel…' : 'Building Excel with uploaded images…');
 
-        const payload = { rows: parsedRows, codeColIndex, imgColIndex, sheetName };
+        const payload = { rows: parsedRows, codeColIndex, imgColIndex, sheetName, qualityPreset };
         if (imgSource === 'upload') payload.imageMap = uploadedImgs;
 
         const response = await fetch('/api/drive', {
@@ -334,9 +361,18 @@
 
         const matched = parseInt(response.headers.get('X-Matched') || '0');
         const missing = JSON.parse(response.headers.get('X-Missing') || '[]');
+        const columnInserted = response.headers.get('X-Column-Inserted') === 'true';
         generatedBlob = await response.blob();
+        if (columnInserted) {
+          const warn = document.getElementById('missingWarn');
+          warn.style.background = '#E1F5EE';
+          warn.style.borderColor = '#5DCAA5';
+          warn.style.color = '#0F6E56';
+          warn.textContent = 'Your chosen image column had data in it — a new blank column was inserted automatically to keep your data safe.';
+          warn.style.display = 'block';
+        }
 
-        const dataRows = parsedRows.filter(row => { const c = String(row[codeColIndex]||'').trim(); return c && c.toLowerCase() !== 'code'; });
+        const dataRows = parsedRows.filter(row => { const c = String(row[codeColIndex]||'').trim(); const ok = /^\d+$/.test(c) || /^SV\d+$/i.test(c) || /^B\d+-\d+$/i.test(c); return ok; });
         const sizeMB = (generatedBlob.size / 1024 / 1024).toFixed(1);
 
         setProgress(100, 'Done');
