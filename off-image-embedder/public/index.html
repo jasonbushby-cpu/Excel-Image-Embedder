@@ -415,6 +415,36 @@
         // ── Phase 1: send each batch to /api/drive, get back xlsx blobs ──
         const batchResults = []; // [{ xlsx: base64, matched, missing }]
 
+        // Fetch a single batch with up to maxRetries retries on failure
+        async function fetchBatch(bIdx) {
+          const payload = { rows: batches[bIdx], codeColIndex, imgColIndex, sheetName, compressTarget };
+          if (imgSource === 'upload') payload.imageMap = uploadedImgs;
+          const maxRetries = 3;
+          for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            if (attempt > 1) {
+              const waitSecs = attempt * 5;
+              setProgress(
+                Math.round((bIdx / totalBatches) * 80),
+                `Batch ${bIdx + 1} of ${totalBatches} — retrying in ${waitSecs}s (attempt ${attempt}/${maxRetries})…`
+              );
+              await new Promise(r => setTimeout(r, waitSecs * 1000));
+            }
+            const response = await fetch('/api/drive', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+            if (response.ok) return response;
+            const errJson = await response.json().catch(() => ({}));
+            const msg = errJson.error || errJson.detail || `HTTP ${response.status}`;
+            const hint = errJson.hint || '';
+            if (attempt === maxRetries) {
+              throw new Error(`Batch ${bIdx + 1} of ${totalBatches} failed after ${maxRetries} attempts: ${msg}${hint ? ' — ' + hint : ''}`);
+            }
+            console.warn(`Batch ${bIdx + 1} attempt ${attempt} failed: ${msg} — retrying…`);
+          }
+        }
+
         for (let bIdx = 0; bIdx < totalBatches; bIdx++) {
           const pct = Math.round((bIdx / totalBatches) * 80);
           setProgress(pct, totalBatches > 1
@@ -422,20 +452,7 @@
             : 'Fetching images and building Excel…'
           );
 
-          const payload = { rows: batches[bIdx], codeColIndex, imgColIndex, sheetName, compressTarget };
-          if (imgSource === 'upload') payload.imageMap = uploadedImgs;
-
-          const response = await fetch('/api/drive', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
-
-          if (!response.ok) {
-            const err = await response.json().catch(() => ({ error: 'Unknown server error — check your connection and try again.' }));
-            const fullMsg = err.hint ? `${err.error}\n\n💡 ${err.hint}` : (err.error || err.detail || 'Server error');
-            throw new Error(totalBatches > 1 ? `Batch ${bIdx + 1} of ${totalBatches} failed: ${fullMsg}` : fullMsg);
-          }
+          const response = await fetchBatch(bIdx);
 
           const matched = parseInt(response.headers.get('X-Matched') || '0');
           const missing = JSON.parse(response.headers.get('X-Missing') || '[]');
