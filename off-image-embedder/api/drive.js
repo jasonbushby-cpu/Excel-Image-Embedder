@@ -39,8 +39,6 @@ async function getImageBuffer(drive, fileId) {
   };
 }
 
-// Compress image buffer using sharp
-// targetMB: total file budget per image in KB (we'll do proportional sizing)
 async function compressImage(buffer, quality) {
   try {
     return await sharp(buffer)
@@ -49,7 +47,7 @@ async function compressImage(buffer, quality) {
       .toBuffer();
   } catch (err) {
     console.error('Compression error:', err.message);
-    return buffer; // return original if compression fails
+    return buffer;
   }
 }
 
@@ -77,7 +75,7 @@ function classifyError(msg) {
   if (msg.includes('invalid_grant') || msg.includes('401'))
     return { userError: 'Google authentication failed.', hint: 'Contact your administrator to refresh the service account key.' };
   if (msg.includes('ENOMEM') || msg.includes('out of memory'))
-    return { userError: 'Server ran out of memory.', hint: 'Try a smaller batch.' };
+    return { userError: 'Server ran out of memory.', hint: 'Try using the 5MB or 10MB compression option.' };
   if (msg.includes('timed out') || msg.includes('timeout'))
     return { userError: 'Server timeout — batch took too long.', hint: 'Please try again.' };
   return { userError: msg, hint: '' };
@@ -91,13 +89,10 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const { rows, codeColIndex, imgColIndex, sheetName, imageMap, compressTarget } = req.body;
+    const { rows, codeColIndex, imgColIndex, sheetName, imageMap, compressTarget, prevXlsx, isFirstBatch } = req.body;
     if (!rows || !rows.length) return res.status(400).json({ error: 'No rows provided' });
 
-    // Compression quality settings
-    // We resize to max 400px and apply JPEG quality to hit target file size
     const compressQuality = compressTarget === '5' ? 50 : compressTarget === '10' ? 70 : null;
-
     const useDrive = !imageMap;
     let drive = null;
     if (useDrive) {
@@ -105,17 +100,18 @@ module.exports = async function handler(req, res) {
       drive = google.drive({ version: 'v3', auth });
     }
 
+    // Collect data rows (skip header row 0)
     const dataRows = [];
     for (let rowIdx = 1; rowIdx < rows.length; rowIdx++) {
       const code = String(rows[rowIdx][codeColIndex] || '').trim();
       if (code && /\d/.test(code)) dataRows.push({ rowIdx, code });
     }
 
+    // Fetch images in parallel
     const imageResults = await pLimit(
       dataRows.map(({ rowIdx, code }) => async () => {
         try {
           let buffer, extension;
-
           if (useDrive) {
             const file = await findImageInDrive(drive, code);
             if (!file) return { rowIdx, code, found: false };
@@ -130,13 +126,10 @@ module.exports = async function handler(req, res) {
             buffer = Buffer.from(b64, 'base64');
             extension = mime.includes('png') ? 'png' : 'jpeg';
           }
-
-          // Apply compression if requested
           if (compressQuality) {
             buffer = await compressImage(buffer, compressQuality);
-            extension = 'jpeg'; // sharp always outputs jpeg when compressing
+            extension = 'jpeg';
           }
-
           return { rowIdx, code, found: true, buffer, extension };
         } catch (err) {
           console.error(`Error fetching ${code}:`, err.message);
@@ -146,29 +139,63 @@ module.exports = async function handler(req, res) {
       CONCURRENCY
     );
 
+    // ── Load existing workbook or create new one ──────────────────────
     const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet(sheetName || 'Products');
-    sheet.getColumn(imgColIndex + 1).width = 15;
 
-    rows.forEach((row, rowIdx) => {
-      const excelRow = sheet.getRow(rowIdx + 1);
-      row.forEach((cellVal, colIdx) => {
-        if (colIdx !== imgColIndex) excelRow.getCell(colIdx + 1).value = cellVal;
+    if (prevXlsx && !isFirstBatch) {
+      // Chain mode: load previous xlsx and append new rows to it
+      const prevBuffer = Buffer.from(prevXlsx, 'base64');
+      await workbook.xlsx.load(prevBuffer);
+    }
+
+    // Get or create the sheet
+    let sheet = workbook.getWorksheet(sheetName || 'Products');
+    if (!sheet) sheet = workbook.addWorksheet(sheetName || 'Products');
+
+    if (isFirstBatch) {
+      // First batch: set column width and write header + data rows normally
+      sheet.getColumn(imgColIndex + 1).width = 15;
+      rows.forEach((row, rowIdx) => {
+        const excelRow = sheet.getRow(rowIdx + 1);
+        row.forEach((cellVal, colIdx) => {
+          if (colIdx !== imgColIndex) excelRow.getCell(colIdx + 1).value = cellVal;
+        });
+        excelRow.commit();
       });
-      excelRow.commit();
-    });
+    } else {
+      // Subsequent batches: find last used row and append after it
+      const lastRow = sheet.lastRow ? sheet.lastRow.number : 0;
+      // rows[0] is the header — skip it, write data rows starting after lastRow
+      for (let i = 1; i < rows.length; i++) {
+        const destRowNum = lastRow + i;
+        const excelRow = sheet.getRow(destRowNum);
+        rows[i].forEach((cellVal, colIdx) => {
+          if (colIdx !== imgColIndex) excelRow.getCell(colIdx + 1).value = cellVal;
+        });
+        excelRow.commit();
+      }
+    }
 
+    // Embed images
     let matched = 0;
     const missing = [];
+    const lastRowBeforeThisBatch = isFirstBatch ? 0 : (sheet.lastRow ? sheet.lastRow.number - (rows.length - 1) : 0);
 
     for (const result of imageResults) {
       if (!result.found) { missing.push(result.code); continue; }
       try {
         const imageId = workbook.addImage({ buffer: result.buffer, extension: result.extension });
-        sheet.getRow(result.rowIdx + 1).height = 60;
+
+        // In first batch: rowIdx is relative to rows array (1-indexed)
+        // In subsequent batches: need to offset by rows already in the sheet
+        const sheetRow = isFirstBatch
+          ? result.rowIdx  // already correct: header is row 0, data starts row 1
+          : lastRowBeforeThisBatch + result.rowIdx;
+
+        sheet.getRow(sheetRow + 1).height = 60;
         sheet.addImage(imageId, {
-          tl: { col: imgColIndex, row: result.rowIdx },
-          br: { col: imgColIndex + 1, row: result.rowIdx + 1 },
+          tl: { col: imgColIndex, row: sheetRow },
+          br: { col: imgColIndex + 1, row: sheetRow + 1 },
           editAs: 'oneCell',
         });
         matched++;
