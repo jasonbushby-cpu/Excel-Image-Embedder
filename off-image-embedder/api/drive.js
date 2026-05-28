@@ -1,6 +1,5 @@
 const { google } = require('googleapis');
 const ExcelJS = require('exceljs');
-const sharp = require('sharp');
 
 const FOLDER_ID = '1B2js4ILgQkzYgPv9M65abw4M5-11k7_K';
 
@@ -38,40 +37,6 @@ async function getImageBuffer(drive, fileId) {
   };
 }
 
-const QUALITY_PRESETS = {
-  email:        { size: 200, quality: 60 },
-  standard:     { size: 300, quality: 72 },
-  presentation: { size: 500, quality: 85 },
-};
-
-async function compressImage(buffer, preset) {
-  const p = QUALITY_PRESETS[preset] || QUALITY_PRESETS.standard;
-  return await sharp(buffer)
-    .resize(p.size, p.size, { fit: 'inside', withoutEnlargement: true })
-    .jpeg({ quality: p.quality })
-    .toBuffer();
-}
-
-function columnHasData(rows, colIndex) {
-  // Check data rows (skip header row 0) for any content in this column
-  for (let i = 1; i < rows.length; i++) {
-    const val = rows[i][colIndex];
-    if (val !== null && val !== undefined && String(val).trim() !== '') {
-      return true;
-    }
-  }
-  return false;
-}
-
-function insertColumnIntoRows(rows, colIndex) {
-  // Insert an empty column at colIndex, shifting everything right
-  return rows.map(row => {
-    const newRow = [...row];
-    newRow.splice(colIndex, 0, '');
-    return newRow;
-  });
-}
-
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -80,39 +45,28 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const { rows: inputRows, codeColIndex, imgColIndex, sheetName, imageMap, qualityPreset } = req.body;
-    if (!inputRows || !inputRows.length) return res.status(400).json({ error: 'No rows provided' });
+    const { rows, codeColIndex, imgColIndex, sheetName, imageMap } = req.body;
+    if (!rows || !rows.length) return res.status(400).json({ error: 'No rows provided' });
 
     const useDrive = !imageMap;
     let drive = null;
+
     if (useDrive) {
       const auth = getAuth();
       drive = google.drive({ version: 'v3', auth });
-    }
-
-    // Check if the chosen image column has data — if so, insert a blank column
-    let rows = inputRows;
-    let actualImgColIndex = imgColIndex;
-    let columnInserted = false;
-
-    if (columnHasData(rows, imgColIndex)) {
-      rows = insertColumnIntoRows(rows, imgColIndex);
-      columnInserted = true;
-      // codeColIndex shifts right if it was at or after imgColIndex
-      // (imgColIndex stays the same since we inserted there)
     }
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet(sheetName || 'Products');
 
     // Set image column width
-    sheet.getColumn(actualImgColIndex + 1).width = 15;
+    sheet.getColumn(imgColIndex + 1).width = 15;
 
     // Write all rows
     rows.forEach((row, rowIdx) => {
       const excelRow = sheet.getRow(rowIdx + 1);
       row.forEach((cellVal, colIdx) => {
-        if (colIdx !== actualImgColIndex) {
+        if (colIdx !== imgColIndex) {
           excelRow.getCell(colIdx + 1).value = cellVal;
         }
       });
@@ -122,17 +76,10 @@ module.exports = async function handler(req, res) {
     let matched = 0;
     const missing = [];
 
-    // Adjust codeColIndex if column was inserted before it
-    const effectiveCodeCol = columnInserted && codeColIndex >= imgColIndex
-      ? codeColIndex + 1
-      : codeColIndex;
-
+    // Process each data row
     for (let rowIdx = 1; rowIdx < rows.length; rowIdx++) {
-      const code = String(rows[rowIdx][effectiveCodeCol] || '').trim();
-      // Skip empty cells and obvious header words
-      if (!code) continue;
-      const lc = code.toLowerCase();
-      if (lc === 'code' || lc === 'product code' || lc === 'item no' || lc === 'item no.' || lc === 'sku') continue;
+      const code = String(rows[rowIdx][codeColIndex] || '').trim();
+      if (!code || code.toLowerCase() === 'code') continue;
 
       try {
         let buffer, extension;
@@ -141,20 +88,20 @@ module.exports = async function handler(req, res) {
           const file = await findImageInDrive(drive, code);
           if (!file) { missing.push(code); continue; }
           const imgData = await getImageBuffer(drive, file.id);
-          buffer = await compressImage(imgData.buffer, qualityPreset);
-          extension = 'jpeg';
+          buffer = imgData.buffer;
+          extension = imgData.mimeType.includes('png') ? 'png' : 'jpeg';
         } else {
           const b64 = imageMap[code.toUpperCase()];
           if (!b64) { missing.push(code); continue; }
-          buffer = await compressImage(Buffer.from(b64, 'base64'), qualityPreset);
+          buffer = Buffer.from(b64, 'base64');
           extension = 'jpeg';
         }
 
         const imageId = workbook.addImage({ buffer, extension });
         sheet.getRow(rowIdx + 1).height = 60;
         sheet.addImage(imageId, {
-          tl: { col: actualImgColIndex, row: rowIdx },
-          br: { col: actualImgColIndex + 1, row: rowIdx + 1 },
+          tl: { col: imgColIndex, row: rowIdx },
+          br: { col: imgColIndex + 1, row: rowIdx + 1 },
           editAs: 'oneCell',
         });
         matched++;
@@ -171,13 +118,59 @@ module.exports = async function handler(req, res) {
     res.setHeader('Content-Disposition', 'attachment; filename="output.xlsx"');
     res.setHeader('X-Matched', String(matched));
     res.setHeader('X-Missing', JSON.stringify(missing));
-    res.setHeader('X-Column-Inserted', String(columnInserted));
-    res.setHeader('Access-Control-Expose-Headers', 'X-Matched, X-Missing, X-Column-Inserted');
+    res.setHeader('Access-Control-Expose-Headers', 'X-Matched, X-Missing');
 
     return res.status(200).send(buffer);
 
   } catch (err) {
-    console.error('Handler error:', err.message);
-    return res.status(500).json({ error: 'Server error', detail: err.message });
+    console.error('Handler error:', err.message, err.stack);
+
+    // Classify the error into a user-friendly message
+    const msg = err.message || '';
+    let userError = 'An unexpected error occurred. Please try again.';
+    let hint = '';
+
+    if (msg.includes('ETIMEDOUT') || msg.includes('ECONNRESET') || msg.includes('socket hang up')) {
+      userError = 'The request timed out while fetching images from Google Drive.';
+      hint = 'Try splitting your spreadsheet into smaller batches of 200–300 rows and running each separately.';
+    } else if (msg.includes('rateLimitExceeded') || msg.includes('userRateLimitExceeded') || msg.includes('429')) {
+      userError = 'Google Drive rate limit reached — too many image requests at once.';
+      hint = 'Wait 60 seconds then try again, or split into smaller batches.';
+    } else if (msg.includes('quota') || msg.includes('storageQuota')) {
+      userError = 'Google Drive storage quota exceeded.';
+      hint = 'Contact your Google Workspace admin to check Drive quota.';
+    } else if (msg.includes('forbidden') || msg.includes('403') || msg.includes('accessNotConfigured')) {
+      userError = 'Access denied to Google Drive. The service account may have lost permission.';
+      hint = 'Check that the service account still has access to the image library folder.';
+    } else if (msg.includes('invalid_grant') || msg.includes('unauthorized') || msg.includes('401')) {
+      userError = 'Google authentication failed — the service account credentials may have expired.';
+      hint = 'Contact your administrator to refresh the Google service account key.';
+    } else if (msg.includes('ENOMEM') || msg.includes('out of memory') || msg.includes('heap')) {
+      userError = 'The server ran out of memory processing this many images.';
+      hint = `Your spreadsheet has too many rows to process in one go. Split into batches of 200–300 rows.`;
+    } else if (msg.includes('maxContentLength') || msg.includes('request entity too large') || msg.includes('413')) {
+      userError = 'The uploaded spreadsheet or image data is too large to process.';
+      hint = 'Try compressing your images or splitting the spreadsheet into smaller files.';
+    } else if (msg.includes('ENOTFOUND') || msg.includes('getaddrinfo')) {
+      userError = 'Cannot reach Google Drive — network connectivity issue on the server.';
+      hint = 'This is likely a temporary issue. Wait a minute and try again.';
+    } else if (msg.includes('Function execution timed out') || msg.includes('execution timeout') || msg.includes('Task timed out')) {
+      userError = 'The request timed out — 1,759 images is too many to process in one go.';
+      hint = 'Vercel serverless functions have a 10-second limit. Split your spreadsheet into batches of 200–300 rows.';
+    } else if (msg.includes('No rows provided') || msg.includes('400')) {
+      userError = 'No spreadsheet data was received by the server.';
+      hint = 'Try re-uploading your spreadsheet and running again.';
+    } else if (msg.includes('workbook') || msg.includes('ExcelJS') || msg.includes('worksheet')) {
+      userError = 'Failed to build the Excel file — the spreadsheet data may be malformed.';
+      hint = 'Check your spreadsheet for merged cells or unusual formatting, then try again.';
+    } else if (msg) {
+      userError = msg;
+    }
+
+    return res.status(500).json({
+      error: userError,
+      hint,
+      detail: msg,
+    });
   }
 };
