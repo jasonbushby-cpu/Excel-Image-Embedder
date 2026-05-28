@@ -412,7 +412,10 @@
           const missing = JSON.parse(response.headers.get('X-Missing') || '[]');
           const buf = await response.arrayBuffer();
           // Convert to base64 for sending to merge endpoint
-          const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+          const bytes = new Uint8Array(buf);
+          let binary = '';
+          for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+          const b64 = btoa(binary);
           batchResults.push({ xlsx: b64, matched, missing });
 
           setProgress(Math.round(((bIdx + 1) / totalBatches) * 80),
