@@ -56,7 +56,7 @@
     .upload-zone:hover { border-color: var(--green); background: var(--green-light); }
     .upload-zone i { font-size: 22px; color: var(--text-faint); display: block; margin-bottom: 0.4rem; }
     .imgs-loaded { margin-top: 0.5rem; font-size: 12px; color: var(--green-dark); background: var(--green-light); border-radius: var(--radius-sm); padding: 0.4rem 0.6rem; }
-    .preview-wrap { border: 0.5px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+    .preview-wrap { border: 0.5px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; max-height: 320px; overflow-y: auto; }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
     thead th { background: var(--bg); padding: 7px 10px; text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); border-bottom: 0.5px solid var(--border); }
     tbody td { padding: 7px 10px; border-bottom: 0.5px solid var(--border); vertical-align: middle; }
@@ -334,8 +334,12 @@
       const codeCol = parseInt(document.getElementById('codeCol').value);
       const tbody = document.getElementById('previewBody');
       tbody.innerHTML = '';
-      const dataRows = parsedRows.filter(row => { const c = String(row[codeCol]||'').trim(); return c && c.toLowerCase() !== 'code'; });
-      dataRows.slice(0, 8).forEach(row => {
+      // Always skip row 0 (header), then also skip any row where code looks like a header label (no digits)
+      const dataRows = parsedRows.slice(1).filter(row => {
+        const c = String(row[codeCol]||'').trim();
+        return c && /\d/.test(c); // must contain at least one digit to be a product code
+      });
+      dataRows.slice(0, 50).forEach(row => {
         const code = String(row[codeCol]||'').trim();
         const desc = String(row[codeCol === 0 ? 1 : 0]||'');
         let status = 'pending', label = 'Will fetch from Drive';
@@ -344,10 +348,13 @@
         tr.innerHTML = `<td class="code-cell">${code}</td><td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#555">${desc}</td><td><span class="match-badge ${status}">${label}</span></td>`;
         tbody.appendChild(tr);
       });
-      document.getElementById('previewFooter').textContent = dataRows.length > 8 ? `Showing 8 of ${dataRows.length} products` : `${dataRows.length} products`;
+      document.getElementById('previewFooter').textContent = dataRows.length > 50 ? `Showing 50 of ${dataRows.length} products` : `${dataRows.length} products`;
     }
 
-    const BATCH_SIZE = 250; // rows per API call — safely within Vercel's 10s limit
+    // How many product codes to pre-fetch per batch from Drive.
+    // Each batch is a fast /api/drive call that returns only JSON image data.
+    // The final Excel is built in one single call once all images are collected.
+    const PREFETCH_BATCH = 200;
 
     async function generate() {
       if (!parsedRows.length) return;
@@ -366,113 +373,97 @@
       };
 
       try {
-        // Separate header row from data rows
-        const headerRow  = parsedRows[0];
-        const dataRows   = parsedRows.slice(1).filter(row => {
+        const dataRows = parsedRows.slice(1).filter(row => {
           const c = String(row[codeColIndex] || '').trim();
-          return c && c.toLowerCase() !== 'code';
+          return c && /\d/.test(c);
         });
 
-        // Split data into chunks of BATCH_SIZE
-        const batches = [];
-        for (let i = 0; i < dataRows.length; i += BATCH_SIZE) {
-          batches.push(dataRows.slice(i, i + BATCH_SIZE));
-        }
-        const totalBatches = batches.length;
+        let collectedImageMap = {};
 
-        let totalMatched = 0;
-        let allMissing   = [];
-        // We'll collect each batch's ArrayBuffer then merge them with SheetJS
-        const batchBuffers = []; // { data: ArrayBuffer, matched: number }
-
-        for (let bIdx = 0; bIdx < totalBatches; bIdx++) {
-          const batchRows  = batches[bIdx];
-          // Each batch gets the header row prepended so the API builds a valid sheet
-          const rowsToSend = [headerRow, ...batchRows];
-
-          const pctStart = Math.round((bIdx / totalBatches) * 85);
-          const pctEnd   = Math.round(((bIdx + 1) / totalBatches) * 85);
-          setProgress(pctStart, `Batch ${bIdx + 1} of ${totalBatches} · ${totalMatched} images done so far…`);
-
-          const payload = { rows: rowsToSend, codeColIndex, imgColIndex, sheetName };
-          if (imgSource === 'upload') payload.imageMap = uploadedImgs;
-
-          const response = await fetch('/api/drive', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
-
-          if (!response.ok) {
-            const err = await response.json().catch(() => ({ error: 'Unknown server error — check your connection and try again.' }));
-            const fullMsg = err.hint ? `${err.error}\n\n💡 ${err.hint}` : (err.error || err.detail || 'Server error');
-            throw new Error(`Batch ${bIdx + 1} of ${totalBatches} failed: ${fullMsg}`);
+        if (imgSource === 'drive') {
+          // ── Phase 1: pre-fetch images from Drive in batches ───────────
+          // Extract unique product codes
+          const codes = [...new Set(
+            dataRows.map(row => String(row[codeColIndex] || '').trim()).filter(Boolean)
+          )];
+          const batches = [];
+          for (let i = 0; i < codes.length; i += PREFETCH_BATCH) {
+            batches.push(codes.slice(i, i + PREFETCH_BATCH));
           }
+          const totalBatches = batches.length;
 
-          const matched = parseInt(response.headers.get('X-Matched') || '0');
-          const missing = JSON.parse(response.headers.get('X-Missing') || '[]');
-          totalMatched += matched;
-          allMissing    = allMissing.concat(missing);
+          for (let bIdx = 0; bIdx < totalBatches; bIdx++) {
+            const pct = Math.round(((bIdx + 0.5) / totalBatches) * 70);
+            setProgress(pct, `Fetching images ${bIdx * PREFETCH_BATCH + 1}–${Math.min((bIdx + 1) * PREFETCH_BATCH, codes.length)} of ${codes.length}…`);
 
-          const buf = await response.arrayBuffer();
-          batchBuffers.push({ data: buf, matched });
-          setProgress(pctEnd, `Batch ${bIdx + 1} of ${totalBatches} complete · ${totalMatched} images so far…`);
-        }
+            const response = await fetch('/api/drive', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                prefetchCodes: batches[bIdx],   // signal: only fetch images, return JSON
+                codeColIndex, imgColIndex, sheetName,
+              }),
+            });
 
-        // ── Merge all batch Excel files into one workbook ──────────────
-        setProgress(88, 'Merging batches into one file…');
-
-        const mergedWb = XLSX.utils.book_new();
-        let mergedSheet = null;
-
-        batchBuffers.forEach(({ data }, bIdx) => {
-          const wb = XLSX.read(new Uint8Array(data), { type: 'array' });
-          const ws = wb.Sheets[wb.SheetNames[0]];
-          if (bIdx === 0) {
-            // First batch — keep as-is (includes header)
-            mergedSheet = ws;
-          } else {
-            // Subsequent batches — skip header row, append data rows
-            const existingRange = XLSX.utils.decode_range(mergedSheet['!ref']);
-            const newRange      = XLSX.utils.decode_range(ws['!ref']);
-            const startRow      = existingRange.e.r + 1; // next empty row in merged sheet
-
-            for (let R = 1; R <= newRange.e.r; R++) { // start at 1 to skip header
-              for (let C = newRange.s.c; C <= newRange.e.c; C++) {
-                const srcCell  = ws[XLSX.utils.encode_cell({ r: R, c: C })];
-                if (!srcCell) continue;
-                const destAddr = XLSX.utils.encode_cell({ r: startRow + (R - 1), c: C });
-                mergedSheet[destAddr] = srcCell;
-              }
+            if (!response.ok) {
+              const err = await response.json().catch(() => ({ error: 'Unknown server error.' }));
+              const fullMsg = err.hint ? `${err.error}\n\n💡 ${err.hint}` : (err.error || err.detail || 'Server error');
+              throw new Error(`Image fetch batch ${bIdx + 1} of ${totalBatches} failed: ${fullMsg}`);
             }
 
-            // Extend the sheet range
-            mergedSheet['!ref'] = XLSX.utils.encode_range({
-              s: { r: 0, c: existingRange.s.c },
-              e: { r: startRow + newRange.e.r - 1, c: Math.max(existingRange.e.c, newRange.e.c) },
-            });
+            const json = await response.json();
+            // Merge returned images into our map { CODE: base64string }
+            Object.assign(collectedImageMap, json.images || {});
+
+            const fetched = Object.keys(collectedImageMap).length;
+            setProgress(Math.round(((bIdx + 1) / totalBatches) * 70), `${fetched} images fetched…`);
           }
+
+          setProgress(72, 'All images fetched — building Excel…');
+        } else {
+          // Upload mode — images already in memory
+          collectedImageMap = uploadedImgs;
+          setProgress(20, 'Building Excel with uploaded images…');
+        }
+
+        // ── Phase 2: single API call to build the complete Excel ───────
+        const response = await fetch('/api/drive', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            rows: parsedRows,
+            codeColIndex,
+            imgColIndex,
+            sheetName,
+            imageMap: collectedImageMap,
+          }),
         });
 
-        XLSX.utils.book_append_sheet(mergedWb, mergedSheet, sheetName || 'Products');
-        const mergedArr  = XLSX.write(mergedWb, { type: 'array', bookType: 'xlsx' });
-        generatedBlob    = new Blob([mergedArr], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({ error: 'Unknown server error — check your connection and try again.' }));
+          const fullMsg = err.hint ? `${err.error}\n\n💡 ${err.hint}` : (err.error || err.detail || 'Server error');
+          throw new Error(fullMsg);
+        }
 
-        const sizeMB = (generatedBlob.size / 1024 / 1024).toFixed(1);
-        setProgress(100, `Done · ${totalBatches > 1 ? totalBatches + ' batches merged' : 'Complete'}`);
+        setProgress(95, 'Downloading file…');
 
+        const matched = parseInt(response.headers.get('X-Matched') || '0');
+        const missing = JSON.parse(response.headers.get('X-Missing') || '[]');
+        generatedBlob = await response.blob();
+        const sizeMB  = (generatedBlob.size / 1024 / 1024).toFixed(1);
+
+        setProgress(100, 'Done');
         document.getElementById('rProducts').textContent = dataRows.length;
-        document.getElementById('rMatched').textContent  = totalMatched;
+        document.getElementById('rMatched').textContent  = matched;
         document.getElementById('rSize').textContent     = sizeMB + ' MB';
         document.getElementById('result').style.display  = 'block';
         document.getElementById('generateBtn').disabled  = false;
 
-        // Record in analytics
-        recordRun(totalMatched);
+        recordRun(matched);
 
-        if (allMissing.length > 0) {
+        if (missing.length > 0) {
           const warn = document.getElementById('missingWarn');
-          warn.textContent = `${allMissing.length} product${allMissing.length > 1 ? 's' : ''} had no image: ${allMissing.slice(0, 6).join(', ')}${allMissing.length > 6 ? '…' : ''}`;
+          warn.textContent = `${missing.length} product${missing.length > 1 ? 's' : ''} had no image: ${missing.slice(0, 6).join(', ')}${missing.length > 6 ? '…' : ''}`;
           warn.style.display = 'block';
         }
 
