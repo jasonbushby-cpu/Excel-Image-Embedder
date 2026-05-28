@@ -56,7 +56,7 @@
     .upload-zone:hover { border-color: var(--green); background: var(--green-light); }
     .upload-zone i { font-size: 22px; color: var(--text-faint); display: block; margin-bottom: 0.4rem; }
     .imgs-loaded { margin-top: 0.5rem; font-size: 12px; color: var(--green-dark); background: var(--green-light); border-radius: var(--radius-sm); padding: 0.4rem 0.6rem; }
-    .preview-wrap { border: 0.5px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; max-height: 320px; overflow-y: auto; }
+    .preview-wrap { border: 0.5px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
     thead th { background: var(--bg); padding: 7px 10px; text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); border-bottom: 0.5px solid var(--border); }
     tbody td { padding: 7px 10px; border-bottom: 0.5px solid var(--border); vertical-align: middle; }
@@ -84,9 +84,33 @@
     .dl-btn { width: 100%; height: 42px; background: var(--green-dark); color: #fff; border: none; border-radius: var(--radius-sm); font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 7px; transition: background 0.15s; }
     .dl-btn:hover { background: #085041; }
     .dl-note { font-size: 11px; color: var(--green-dark); text-align: center; margin-top: 0.5rem; opacity: 0.7; }
-    .error-box { background: var(--red-light); border: 0.5px solid var(--red); border-radius: var(--radius-sm); padding: 0.75rem; font-size: 13px; color: var(--red); margin-top: 0.75rem; display: none; }
+    .error-box { background: var(--red-light); border: 0.5px solid var(--red); border-radius: var(--radius-sm); padding: 0.75rem; font-size: 13px; color: var(--red); margin-top: 0.75rem; display: none; white-space: pre-line; line-height: 1.6; }
     .missing-warn { background: var(--amber-light); border: 0.5px solid #EF9F27; border-radius: var(--radius-sm); padding: 0.6rem 0.75rem; font-size: 12px; color: var(--amber); margin-top: 0.75rem; display: none; }
     input[type=file] { display: none; }
+
+    /* Analytics panel */
+    .analytics-panel { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 1.25rem; margin-top: 1.5rem; }
+    .analytics-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+    .analytics-title { font-size: 13px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 7px; }
+    .analytics-title i { color: var(--text-muted); }
+    .analytics-reset { font-size: 11px; color: var(--text-faint); background: none; border: none; cursor: pointer; font-family: inherit; padding: 0; }
+    .analytics-reset:hover { color: var(--red); }
+    .analytics-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 1rem; }
+    .a-stat { background: var(--bg); border-radius: var(--radius-sm); padding: 0.7rem 0.5rem; text-align: center; }
+    .a-stat-n { font-size: 20px; font-weight: 700; line-height: 1; color: var(--text); }
+    .a-stat-l { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-top: 4px; }
+    .time-saved-bar { background: var(--green-light); border-radius: var(--radius-sm); padding: 0.6rem 0.75rem; display: flex; align-items: center; gap: 10px; }
+    .time-saved-bar i { color: var(--green); font-size: 18px; flex-shrink: 0; }
+    .time-saved-text { font-size: 12px; color: var(--green-dark); }
+    .time-saved-text strong { font-weight: 700; font-size: 14px; }
+    .usage-chart { margin-top: 1rem; }
+    .usage-chart-title { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-faint); margin-bottom: 0.5rem; }
+    .chart-bars { display: flex; align-items: flex-end; gap: 4px; height: 48px; }
+    .chart-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+    .chart-bar { width: 100%; background: var(--green-light); border-radius: 3px 3px 0 0; min-height: 3px; transition: height 0.3s ease; position: relative; }
+    .chart-bar.today { background: var(--green); }
+    .chart-label { font-size: 9px; color: var(--text-faint); }
+    .analytics-empty { font-size: 12px; color: var(--text-faint); text-align: center; padding: 1rem 0; }
   </style>
 </head>
 <body>
@@ -95,7 +119,6 @@
       <div class="brand">One for Fun</div>
       <h1>Image Embedder</h1>
       <p class="subtitle">Upload a spreadsheet, embed product images, download ready-to-send Excel.</p>
-      <p style="font-size:11px; color:var(--text-faint); margin-top:0.4rem;">Tip: make sure your product code column contains only product codes — no merged cells or section titles.</p>
     </header>
 
     <div class="card" id="card1">
@@ -140,22 +163,9 @@
       </div>
     </div>
 
-    <div class="card locked" id="card2b">
-      <div class="card-header">
-        <div class="step-badge" id="badge2b">3</div>
-        <div><div class="card-title">File size</div><div class="card-desc">Choose quality based on how you'll use the file</div></div>
-      </div>
-      <div class="source-tabs" style="grid-template-columns:1fr 1fr 1fr;">
-        <button class="source-tab" id="presetEmail" onclick="setPreset('email')"><i class="ti ti-mail"></i> Email</button>
-        <button class="source-tab active" id="presetStandard" onclick="setPreset('standard')"><i class="ti ti-file-spreadsheet"></i> Standard</button>
-        <button class="source-tab" id="presetPresentation" onclick="setPreset('presentation')" style="border-right:none; border-left: 0.5px solid var(--border-strong);"><i class="ti ti-presentation"></i> Presentation</button>
-      </div>
-      <div id="presetDesc" style="font-size:12px; color:var(--text-muted); text-align:center; margin-top:0.25rem;">Good quality · keeps file under 10MB</div>
-    </div>
-
     <div class="card locked" id="card3">
       <div class="card-header">
-        <div class="step-badge" id="badge3">4</div>
+        <div class="step-badge" id="badge3">3</div>
         <div><div class="card-title">Image source</div><div class="card-desc">Use the main library or upload your own images</div></div>
       </div>
       <div class="source-tabs">
@@ -180,7 +190,7 @@
 
     <div class="card locked" id="card4">
       <div class="card-header">
-        <div class="step-badge" id="badge4">5</div>
+        <div class="step-badge" id="badge4">4</div>
         <div><div class="card-title">Preview</div><div class="card-desc">Check your products before generating</div></div>
       </div>
       <div class="preview-wrap">
@@ -214,24 +224,36 @@
       <button class="dl-btn" id="dlBtn"><i class="ti ti-download"></i> Download Excel file</button>
       <div class="dl-note">Hard-embedded images &nbsp;·&nbsp; Ready to email</div>
     </div>
-  </div>
+
+    <!-- Analytics Panel -->
+    <div class="analytics-panel" id="analyticsPanel">
+      <div class="analytics-header">
+        <div class="analytics-title"><i class="ti ti-chart-bar"></i> Usage analytics</div>
+        <button class="analytics-reset" onclick="resetAnalytics()">Reset data</button>
+      </div>
+      <div id="analyticsContent">
+        <div class="analytics-empty" id="analyticsEmpty">No runs yet — generate your first Excel file to see stats here.</div>
+        <div id="analyticsData" style="display:none">
+          <div class="analytics-stats">
+            <div class="a-stat"><div class="a-stat-n" id="aTotalRuns">0</div><div class="a-stat-l">Total runs</div></div>
+            <div class="a-stat"><div class="a-stat-n" id="aTotalImages">0</div><div class="a-stat-l">Images added</div></div>
+            <div class="a-stat"><div class="a-stat-n" id="aAvgImages">0</div><div class="a-stat-l">Avg per run</div></div>
+            <div class="a-stat"><div class="a-stat-n" id="aTodayRuns">0</div><div class="a-stat-l">Today</div></div>
+          </div>
+          <div class="time-saved-bar">
+            <i class="ti ti-clock-hour-4"></i>
+            <div class="time-saved-text">Estimated time saved: <strong id="aTimeSaved">0 mins</strong> &nbsp;·&nbsp; at ~2 min per image manually</div>
+          </div>
+          <div class="usage-chart">
+            <div class="usage-chart-title">Images added — last 7 days</div>
+            <div class="chart-bars" id="chartBars"></div>
+          </div>
+        </div>
+      </div>
+      </div><!-- end container -->
 
   <script>
-    let parsedRows = [], sourceFileName = '', imgSource = 'drive', uploadedImgs = {}, generatedBlob = null, sheetName = 'Products', qualityPreset = 'standard';
-
-    const presetDescs = {
-      email: 'Smallest file size · ideal for email under 5MB',
-      standard: 'Good quality · keeps file under 10MB',
-      presentation: 'High quality · for decks and print',
-    };
-
-    function setPreset(p) {
-      qualityPreset = p;
-      ['email','standard','presentation'].forEach(id => {
-        document.getElementById('preset' + id.charAt(0).toUpperCase() + id.slice(1)).classList.toggle('active', id === p);
-      });
-      document.getElementById('presetDesc').textContent = presetDescs[p];
-    }
+    let parsedRows = [], sourceFileName = '', imgSource = 'drive', uploadedImgs = {}, generatedBlob = null, sheetName = 'Products';
 
     function handleFile(input) {
       const file = input.files[0];
@@ -257,8 +279,8 @@
             parsedRows.push(row);
           }
           markDone('badge1');
-          unlock('card2'); unlock('card2b'); unlock('card3'); unlock('card4');
-          markDone('badge2'); markDone('badge2b'); markDone('badge3'); markDone('badge4');
+          unlock('card2'); unlock('card3'); unlock('card4');
+          markDone('badge2'); markDone('badge3'); markDone('badge4');
           buildPreview();
           document.getElementById('generateBtn').disabled = false;
         } catch(err) { alert('Could not read file. Please use .xlsx or .csv format.'); }
@@ -272,8 +294,8 @@
       document.getElementById('filePill').style.display = 'none';
       document.getElementById('dropZone').style.display = 'block';
       resetBadge('badge1');
-      lock('card2'); lock('card2b'); lock('card3'); lock('card4');
-      resetBadge('badge2'); resetBadge('badge2b'); resetBadge('badge3'); resetBadge('badge4');
+      lock('card2'); lock('card3'); lock('card4');
+      resetBadge('badge2'); resetBadge('badge3'); resetBadge('badge4');
       document.getElementById('generateBtn').disabled = true;
       document.getElementById('result').style.display = 'none';
       document.getElementById('progressWrap').style.display = 'none';
@@ -312,43 +334,25 @@
       const codeCol = parseInt(document.getElementById('codeCol').value);
       const tbody = document.getElementById('previewBody');
       tbody.innerHTML = '';
-      const dataRows = parsedRows.filter(row => { const c = String(row[codeCol]||'').trim(); const skip = ['code','product code','item no','item no.','sku']; return c && !skip.includes(c.toLowerCase()); });
-
-      // Split into missing and found, show missing first
-      const missingRows = [];
-      const foundRows = [];
-      dataRows.forEach(row => {
+      const dataRows = parsedRows.filter(row => { const c = String(row[codeCol]||'').trim(); return c && c.toLowerCase() !== 'code'; });
+      dataRows.slice(0, 8).forEach(row => {
         const code = String(row[codeCol]||'').trim();
         const desc = String(row[codeCol === 0 ? 1 : 0]||'');
-        let status, label;
-        if (imgSource === 'upload') {
-          const found = !!uploadedImgs[code.toUpperCase()];
-          status = found ? 'uploaded' : 'missing';
-          label = found ? 'Uploaded' : 'Not found';
-          (found ? foundRows : missingRows).push({ code, desc, status, label });
-        } else {
-          foundRows.push({ code, desc, status: 'pending', label: 'Will fetch from Drive' });
-        }
-      });
-
-      // Render missing first, then found
-      [...missingRows, ...foundRows].forEach(({ code, desc, status, label }) => {
+        let status = 'pending', label = 'Will fetch from Drive';
+        if (imgSource === 'upload') { const found = !!uploadedImgs[code.toUpperCase()]; status = found ? 'uploaded' : 'missing'; label = found ? 'Uploaded' : 'Not found'; }
         const tr = document.createElement('tr');
         tr.innerHTML = `<td class="code-cell">${code}</td><td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#555">${desc}</td><td><span class="match-badge ${status}">${label}</span></td>`;
         tbody.appendChild(tr);
       });
-
-      const total = dataRows.length;
-      const missingCount = missingRows.length;
-      let footerText = `${total} product${total !== 1 ? 's' : ''}`;
-      if (missingCount > 0) footerText += ` · ${missingCount} missing`;
-      document.getElementById('previewFooter').textContent = footerText;
+      document.getElementById('previewFooter').textContent = dataRows.length > 8 ? `Showing 8 of ${dataRows.length} products` : `${dataRows.length} products`;
     }
+
+    const BATCH_SIZE = 250; // rows per API call — safely within Vercel's 10s limit
 
     async function generate() {
       if (!parsedRows.length) return;
       const codeColIndex = parseInt(document.getElementById('codeCol').value);
-      const imgColIndex = parseInt(document.getElementById('imgCol').value);
+      const imgColIndex  = parseInt(document.getElementById('imgCol').value);
 
       document.getElementById('generateBtn').disabled = true;
       document.getElementById('result').style.display = 'none';
@@ -362,57 +366,120 @@
       };
 
       try {
-        setProgress(15, imgSource === 'drive' ? 'Fetching images from Drive and building Excel…' : 'Building Excel with uploaded images…');
-
-        const payload = { rows: parsedRows, codeColIndex, imgColIndex, sheetName, qualityPreset };
-        if (imgSource === 'upload') payload.imageMap = uploadedImgs;
-
-        const response = await fetch('/api/drive', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
+        // Separate header row from data rows
+        const headerRow  = parsedRows[0];
+        const dataRows   = parsedRows.slice(1).filter(row => {
+          const c = String(row[codeColIndex] || '').trim();
+          return c && c.toLowerCase() !== 'code';
         });
 
-        if (!response.ok) {
-          const err = await response.json().catch(() => ({ error: 'Unknown server error' }));
-          throw new Error(err.detail || err.error || 'Server error');
+        // Split data into chunks of BATCH_SIZE
+        const batches = [];
+        for (let i = 0; i < dataRows.length; i += BATCH_SIZE) {
+          batches.push(dataRows.slice(i, i + BATCH_SIZE));
+        }
+        const totalBatches = batches.length;
+
+        let totalMatched = 0;
+        let allMissing   = [];
+        // We'll collect each batch's ArrayBuffer then merge them with SheetJS
+        const batchBuffers = []; // { data: ArrayBuffer, matched: number }
+
+        for (let bIdx = 0; bIdx < totalBatches; bIdx++) {
+          const batchRows  = batches[bIdx];
+          // Each batch gets the header row prepended so the API builds a valid sheet
+          const rowsToSend = [headerRow, ...batchRows];
+
+          const pctStart = Math.round((bIdx / totalBatches) * 85);
+          const pctEnd   = Math.round(((bIdx + 1) / totalBatches) * 85);
+          setProgress(pctStart, `Batch ${bIdx + 1} of ${totalBatches} · ${totalMatched} images done so far…`);
+
+          const payload = { rows: rowsToSend, codeColIndex, imgColIndex, sheetName };
+          if (imgSource === 'upload') payload.imageMap = uploadedImgs;
+
+          const response = await fetch('/api/drive', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+
+          if (!response.ok) {
+            const err = await response.json().catch(() => ({ error: 'Unknown server error — check your connection and try again.' }));
+            const fullMsg = err.hint ? `${err.error}\n\n💡 ${err.hint}` : (err.error || err.detail || 'Server error');
+            throw new Error(`Batch ${bIdx + 1} of ${totalBatches} failed: ${fullMsg}`);
+          }
+
+          const matched = parseInt(response.headers.get('X-Matched') || '0');
+          const missing = JSON.parse(response.headers.get('X-Missing') || '[]');
+          totalMatched += matched;
+          allMissing    = allMissing.concat(missing);
+
+          const buf = await response.arrayBuffer();
+          batchBuffers.push({ data: buf, matched });
+          setProgress(pctEnd, `Batch ${bIdx + 1} of ${totalBatches} complete · ${totalMatched} images so far…`);
         }
 
-        setProgress(90, 'Downloading file…');
+        // ── Merge all batch Excel files into one workbook ──────────────
+        setProgress(88, 'Merging batches into one file…');
 
-        const matched = parseInt(response.headers.get('X-Matched') || '0');
-        const missing = JSON.parse(response.headers.get('X-Missing') || '[]');
-        const columnInserted = response.headers.get('X-Column-Inserted') === 'true';
-        generatedBlob = await response.blob();
-        if (columnInserted) {
-          const warn = document.getElementById('missingWarn');
-          warn.style.background = '#E1F5EE';
-          warn.style.borderColor = '#5DCAA5';
-          warn.style.color = '#0F6E56';
-          warn.textContent = 'Your chosen image column had data in it — a new blank column was inserted automatically to keep your data safe.';
-          warn.style.display = 'block';
-        }
+        const mergedWb = XLSX.utils.book_new();
+        let mergedSheet = null;
 
-        const dataRows = parsedRows.filter(row => { const c = String(row[codeColIndex]||'').trim(); const skip = ['code','product code','item no','item no.','sku']; return c && !skip.includes(c.toLowerCase()); });
+        batchBuffers.forEach(({ data }, bIdx) => {
+          const wb = XLSX.read(new Uint8Array(data), { type: 'array' });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          if (bIdx === 0) {
+            // First batch — keep as-is (includes header)
+            mergedSheet = ws;
+          } else {
+            // Subsequent batches — skip header row, append data rows
+            const existingRange = XLSX.utils.decode_range(mergedSheet['!ref']);
+            const newRange      = XLSX.utils.decode_range(ws['!ref']);
+            const startRow      = existingRange.e.r + 1; // next empty row in merged sheet
+
+            for (let R = 1; R <= newRange.e.r; R++) { // start at 1 to skip header
+              for (let C = newRange.s.c; C <= newRange.e.c; C++) {
+                const srcCell  = ws[XLSX.utils.encode_cell({ r: R, c: C })];
+                if (!srcCell) continue;
+                const destAddr = XLSX.utils.encode_cell({ r: startRow + (R - 1), c: C });
+                mergedSheet[destAddr] = srcCell;
+              }
+            }
+
+            // Extend the sheet range
+            mergedSheet['!ref'] = XLSX.utils.encode_range({
+              s: { r: 0, c: existingRange.s.c },
+              e: { r: startRow + newRange.e.r - 1, c: Math.max(existingRange.e.c, newRange.e.c) },
+            });
+          }
+        });
+
+        XLSX.utils.book_append_sheet(mergedWb, mergedSheet, sheetName || 'Products');
+        const mergedArr  = XLSX.write(mergedWb, { type: 'array', bookType: 'xlsx' });
+        generatedBlob    = new Blob([mergedArr], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
         const sizeMB = (generatedBlob.size / 1024 / 1024).toFixed(1);
+        setProgress(100, `Done · ${totalBatches > 1 ? totalBatches + ' batches merged' : 'Complete'}`);
 
-        setProgress(100, 'Done');
         document.getElementById('rProducts').textContent = dataRows.length;
-        document.getElementById('rMatched').textContent = matched;
-        document.getElementById('rSize').textContent = sizeMB + ' MB';
-        document.getElementById('result').style.display = 'block';
-        document.getElementById('generateBtn').disabled = false;
+        document.getElementById('rMatched').textContent  = totalMatched;
+        document.getElementById('rSize').textContent     = sizeMB + ' MB';
+        document.getElementById('result').style.display  = 'block';
+        document.getElementById('generateBtn').disabled  = false;
 
-        if (missing.length > 0) {
+        // Record in analytics
+        recordRun(totalMatched);
+
+        if (allMissing.length > 0) {
           const warn = document.getElementById('missingWarn');
-          warn.textContent = `${missing.length} product${missing.length > 1 ? 's' : ''} had no image: ${missing.slice(0,6).join(', ')}${missing.length > 6 ? '…' : ''}`;
+          warn.textContent = `${allMissing.length} product${allMissing.length > 1 ? 's' : ''} had no image: ${allMissing.slice(0, 6).join(', ')}${allMissing.length > 6 ? '…' : ''}`;
           warn.style.display = 'block';
         }
 
         document.getElementById('dlBtn').onclick = () => {
           const url = URL.createObjectURL(generatedBlob);
-          const a = document.createElement('a');
-          a.href = url;
+          const a   = document.createElement('a');
+          a.href    = url;
           a.download = sourceFileName.replace(/\.[^.]+$/, '') + '_images.xlsx';
           a.click();
           URL.revokeObjectURL(url);
@@ -440,6 +507,97 @@
     function lock(id) { document.getElementById(id).classList.add('locked'); }
     function markDone(id) { const el = document.getElementById(id); el.classList.add('done'); el.innerHTML = '<i class="ti ti-check" style="font-size:12px;"></i>'; }
     function resetBadge(id) { const el = document.getElementById(id); el.classList.remove('done'); el.innerHTML = id.replace('badge',''); }
+
+    // ── Analytics ──────────────────────────────────────────────
+    const ANALYTICS_KEY = 'off_embedder_analytics';
+
+    function loadAnalytics() {
+      try { return JSON.parse(localStorage.getItem(ANALYTICS_KEY)) || { runs: [] }; } catch { return { runs: [] }; }
+    }
+
+    function saveAnalytics(data) {
+      localStorage.setItem(ANALYTICS_KEY, JSON.stringify(data));
+    }
+
+    function recordRun(imagesMatched) {
+      const data = loadAnalytics();
+      data.runs.push({ ts: Date.now(), images: imagesMatched });
+      // Keep last 500 runs to avoid bloat
+      if (data.runs.length > 500) data.runs = data.runs.slice(-500);
+      saveAnalytics(data);
+      renderAnalytics();
+    }
+
+    function formatTimeSaved(totalImages) {
+      const mins = totalImages * 2;
+      if (mins < 60) return `${mins} mins`;
+      const h = Math.floor(mins / 60), m = mins % 60;
+      return m > 0 ? `${h}h ${m}m` : `${h}h`;
+    }
+
+    function renderAnalytics() {
+      const data = loadAnalytics();
+      const runs = data.runs || [];
+      const empty = document.getElementById('analyticsEmpty');
+      const analyticsData = document.getElementById('analyticsData');
+
+      if (runs.length === 0) {
+        empty.style.display = 'block';
+        analyticsData.style.display = 'none';
+        return;
+      }
+      empty.style.display = 'none';
+      analyticsData.style.display = 'block';
+
+      const totalRuns = runs.length;
+      const totalImages = runs.reduce((s, r) => s + (r.images || 0), 0);
+      const avgImages = totalRuns ? Math.round(totalImages / totalRuns) : 0;
+
+      const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+      const todayRuns = runs.filter(r => r.ts >= todayStart.getTime()).length;
+
+      document.getElementById('aTotalRuns').textContent = totalRuns.toLocaleString();
+      document.getElementById('aTotalImages').textContent = totalImages.toLocaleString();
+      document.getElementById('aAvgImages').textContent = avgImages.toLocaleString();
+      document.getElementById('aTodayRuns').textContent = todayRuns;
+      document.getElementById('aTimeSaved').textContent = formatTimeSaved(totalImages);
+
+      // Build 7-day chart
+      const bars = document.getElementById('chartBars');
+      bars.innerHTML = '';
+      const days = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() - i);
+        days.push(d);
+      }
+      const dayCounts = days.map(d => {
+        const next = new Date(d); next.setDate(next.getDate() + 1);
+        return runs.filter(r => r.ts >= d.getTime() && r.ts < next.getTime()).reduce((s,r) => s + (r.images||0), 0);
+      });
+      const maxCount = Math.max(...dayCounts, 1);
+      const dayLabels = ['Mo','Tu','We','Th','Fr','Sa','Su'];
+      days.forEach((d, i) => {
+        const isToday = i === 6;
+        const pct = Math.max((dayCounts[i] / maxCount) * 100, dayCounts[i] > 0 ? 6 : 3);
+        const wrap = document.createElement('div'); wrap.className = 'chart-bar-wrap';
+        const bar = document.createElement('div'); bar.className = 'chart-bar' + (isToday ? ' today' : '');
+        bar.style.height = pct + '%';
+        if (dayCounts[i] > 0) bar.title = `${dayCounts[i]} images`;
+        const lbl = document.createElement('div'); lbl.className = 'chart-label';
+        lbl.textContent = dayLabels[d.getDay() === 0 ? 6 : d.getDay() - 1];
+        wrap.appendChild(bar); wrap.appendChild(lbl);
+        bars.appendChild(wrap);
+      });
+    }
+
+    function resetAnalytics() {
+      if (!confirm('Reset all analytics data? This cannot be undone.')) return;
+      localStorage.removeItem(ANALYTICS_KEY);
+      renderAnalytics();
+    }
+
+    // Initial render on load
+    renderAnalytics();
   </script>
 </body>
 </html>
