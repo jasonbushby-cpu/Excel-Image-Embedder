@@ -412,23 +412,30 @@
         }
         const totalBatches = batches.length;
 
-        // ── Phase 1: send each batch to /api/drive, get back xlsx blobs ──
-        const batchResults = []; // [{ xlsx: base64, matched, missing }]
+        // ── Chain batches: each call receives the growing xlsx and appends to it ──
+        let currentXlsx = null;   // base64 xlsx passed forward each batch
+        let totalMatched = 0;
+        let allMissing = [];
 
-        // Fetch a single batch with up to maxRetries retries on failure
         async function fetchBatch(bIdx) {
-          const payload = { rows: batches[bIdx], codeColIndex, imgColIndex, sheetName, compressTarget };
-          if (imgSource === 'upload') payload.imageMap = uploadedImgs;
           const maxRetries = 3;
           for (let attempt = 1; attempt <= maxRetries; attempt++) {
             if (attempt > 1) {
-              const waitSecs = attempt * 5;
+              const waitSecs = attempt * 8;
               setProgress(
-                Math.round((bIdx / totalBatches) * 80),
+                Math.round((bIdx / totalBatches) * 95),
                 `Batch ${bIdx + 1} of ${totalBatches} — retrying in ${waitSecs}s (attempt ${attempt}/${maxRetries})…`
               );
               await new Promise(r => setTimeout(r, waitSecs * 1000));
             }
+            const payload = {
+              rows: batches[bIdx],
+              codeColIndex, imgColIndex, sheetName, compressTarget,
+              isFirstBatch: bIdx === 0,
+              prevXlsx: bIdx === 0 ? null : currentXlsx,
+            };
+            if (imgSource === 'upload') payload.imageMap = uploadedImgs;
+
             const response = await fetch('/api/drive', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -439,67 +446,44 @@
             const msg = errJson.error || errJson.detail || `HTTP ${response.status}`;
             const hint = errJson.hint || '';
             if (attempt === maxRetries) {
-              throw new Error(`Batch ${bIdx + 1} of ${totalBatches} failed after ${maxRetries} attempts: ${msg}${hint ? ' — ' + hint : ''}`);
+              throw new Error(`Batch ${bIdx + 1} of ${totalBatches} failed: ${msg}${hint ? ' — ' + hint : ''}`);
             }
             console.warn(`Batch ${bIdx + 1} attempt ${attempt} failed: ${msg} — retrying…`);
           }
         }
 
         for (let bIdx = 0; bIdx < totalBatches; bIdx++) {
-          const pct = Math.round((bIdx / totalBatches) * 80);
-          setProgress(pct, totalBatches > 1
-            ? `Processing batch ${bIdx + 1} of ${totalBatches}…`
-            : 'Fetching images and building Excel…'
+          setProgress(
+            Math.round((bIdx / totalBatches) * 95),
+            totalBatches > 1
+              ? `Processing batch ${bIdx + 1} of ${totalBatches} — ${totalMatched} images done…`
+              : 'Fetching images and building Excel…'
           );
 
           const response = await fetchBatch(bIdx);
+          const batchMatched = parseInt(response.headers.get('X-Matched') || '0');
+          const batchMissing = JSON.parse(response.headers.get('X-Missing') || '[]');
+          totalMatched += batchMatched;
+          allMissing = allMissing.concat(batchMissing);
 
-          const matched = parseInt(response.headers.get('X-Matched') || '0');
-          const missing = JSON.parse(response.headers.get('X-Missing') || '[]');
+          // Convert response to base64 to pass to next batch
           const buf = await response.arrayBuffer();
-          // Convert to base64 for sending to merge endpoint
           const bytes = new Uint8Array(buf);
           let binary = '';
           for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-          const b64 = btoa(binary);
-          batchResults.push({ xlsx: b64, matched, missing });
+          currentXlsx = btoa(binary);
 
-          setProgress(Math.round(((bIdx + 1) / totalBatches) * 80),
-            `Batch ${bIdx + 1} of ${totalBatches} done — ${batchResults.reduce((s,r) => s + r.matched, 0)} images so far…`
+          setProgress(
+            Math.round(((bIdx + 1) / totalBatches) * 95),
+            `Batch ${bIdx + 1} of ${totalBatches} done — ${totalMatched} images embedded…`
           );
         }
 
-        // ── Phase 2: if only one batch, use it directly; otherwise merge ──
-        if (totalBatches === 1) {
-          // Single batch — decode base64 back to blob directly, no merge needed
-          setProgress(95, 'Preparing download…');
-          const binaryStr = atob(batchResults[0].xlsx);
-          const bytes = new Uint8Array(binaryStr.length);
-          for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-          generatedBlob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-
-          showResult(dataRows.length, batchResults[0].matched, batchResults[0].missing);
-        } else {
-          setProgress(82, `Merging ${totalBatches} batches into one file…`);
-
-          const mergeResponse = await fetch('/api/merge', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ batches: batchResults, sheetName }),
-          });
-
-          if (!mergeResponse.ok) {
-            const err = await mergeResponse.json().catch(() => ({ error: 'Merge failed — please try again.' }));
-            throw new Error(err.error || 'Merge failed');
-          }
-
-          setProgress(95, 'Preparing download…');
-          const totalMatched = batchResults.reduce((s, r) => s + r.matched, 0);
-          const allMissing   = batchResults.flatMap(r => r.missing);
-          generatedBlob = await mergeResponse.blob();
-
-          showResult(dataRows.length, totalMatched, allMissing);
-        }
+        // Final xlsx is already complete — just decode and download
+        setProgress(98, 'Preparing download…');
+        const finalBytes = new Uint8Array(atob(currentXlsx).split('').map(c => c.charCodeAt(0)));
+        generatedBlob = new Blob([finalBytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        showResult(dataRows.length, totalMatched, allMissing);
 
       } catch(err) {
         document.getElementById('progressWrap').style.display = 'none';
