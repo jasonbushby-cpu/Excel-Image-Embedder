@@ -87,6 +87,12 @@
     .error-box { background: var(--red-light); border: 0.5px solid var(--red); border-radius: var(--radius-sm); padding: 0.75rem; font-size: 13px; color: var(--red); margin-top: 0.75rem; display: none; white-space: pre-line; line-height: 1.6; }
     .missing-warn { background: var(--amber-light); border: 0.5px solid #EF9F27; border-radius: var(--radius-sm); padding: 0.6rem 0.75rem; font-size: 12px; color: var(--amber); margin-top: 0.75rem; display: none; }
     input[type=file] { display: none; }
+    /* Compression option */
+    .compress-tabs { display: grid; grid-template-columns: 1fr 1fr 1fr; border: 0.5px solid var(--border-strong); border-radius: var(--radius-sm); overflow: hidden; }
+    .compress-tab { padding: 0.65rem 0.5rem; text-align: center; font-size: 13px; font-family: inherit; cursor: pointer; background: var(--bg); color: var(--text-muted); border: none; border-right: 0.5px solid var(--border-strong); display: flex; align-items: center; justify-content: center; gap: 5px; transition: all 0.1s; }
+    .compress-tab:last-child { border-right: none; }
+    .compress-tab.active { background: var(--surface); color: var(--text); font-weight: 600; }
+    .compress-hint { font-size: 12px; color: var(--text-muted); margin-top: 0.75rem; background: var(--amber-light); border-radius: var(--radius-sm); padding: 0.5rem 0.75rem; color: var(--amber); }
 
     /* Analytics panel */
     .analytics-panel { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 1.25rem; margin-top: 1.5rem; }
@@ -202,6 +208,19 @@
       <div class="preview-footer" id="previewFooter"></div>
     </div>
 
+    <div class="card locked" id="card5">
+      <div class="card-header">
+        <div class="step-badge" id="badge5">5</div>
+        <div><div class="card-title">File size limit</div><div class="card-desc">Compress images to keep the Excel file under a target size</div></div>
+      </div>
+      <div class="compress-tabs">
+        <button class="compress-tab active" id="cmpNone" onclick="setCompress('none')">No limit</button>
+        <button class="compress-tab" id="cmp10" onclick="setCompress('10')"><i class="ti ti-mail"></i> Under 10 MB</button>
+        <button class="compress-tab" id="cmp5" onclick="setCompress('5')"><i class="ti ti-mail-fast"></i> Under 5 MB</button>
+      </div>
+      <div class="compress-hint" id="compressHint" style="display:none"></div>
+    </div>
+
     <button class="generate-btn" id="generateBtn" disabled onclick="generate()">
       <i class="ti ti-photo-check"></i> Generate Excel with images
     </button>
@@ -253,7 +272,17 @@
       </div><!-- end container -->
 
   <script>
-    let parsedRows = [], sourceFileName = '', imgSource = 'drive', uploadedImgs = {}, generatedBlob = null, sheetName = 'Products';
+    let parsedRows = [], sourceFileName = '', imgSource = 'drive', uploadedImgs = {}, generatedBlob = null, sheetName = 'Products', compressTarget = 'none';
+
+    function setCompress(val) {
+      compressTarget = val;
+      document.getElementById('cmpNone').classList.toggle('active', val === 'none');
+      document.getElementById('cmp10').classList.toggle('active', val === '10');
+      document.getElementById('cmp5').classList.toggle('active', val === '5');
+      const hint = document.getElementById('compressHint');
+      if (val === 'none') { hint.style.display = 'none'; }
+      else { hint.style.display = 'block'; hint.textContent = val === '5' ? 'Images will be resized and compressed to JPEG to keep the file under 5 MB — ideal for email.' : 'Images will be lightly compressed to keep the file under 10 MB.'; }
+    }
 
     function handleFile(input) {
       const file = input.files[0];
@@ -280,7 +309,7 @@
           }
           markDone('badge1');
           unlock('card2'); unlock('card3'); unlock('card4');
-          markDone('badge2'); markDone('badge3'); markDone('badge4');
+          markDone('badge2'); markDone('badge3'); markDone('badge4'); unlock('card5'); markDone('badge5');
           buildPreview();
           document.getElementById('generateBtn').disabled = false;
         } catch(err) { alert('Could not read file. Please use .xlsx or .csv format.'); }
@@ -294,8 +323,8 @@
       document.getElementById('filePill').style.display = 'none';
       document.getElementById('dropZone').style.display = 'block';
       resetBadge('badge1');
-      lock('card2'); lock('card3'); lock('card4');
-      resetBadge('badge2'); resetBadge('badge3'); resetBadge('badge4');
+      lock('card2'); lock('card3'); lock('card4'); lock('card5');
+      resetBadge('badge2'); resetBadge('badge3'); resetBadge('badge4'); resetBadge('badge5');
       document.getElementById('generateBtn').disabled = true;
       document.getElementById('result').style.display = 'none';
       document.getElementById('progressWrap').style.display = 'none';
@@ -393,7 +422,7 @@
             : 'Fetching images and building Excel…'
           );
 
-          const payload = { rows: batches[bIdx], codeColIndex, imgColIndex, sheetName };
+          const payload = { rows: batches[bIdx], codeColIndex, imgColIndex, sheetName, compressTarget };
           if (imgSource === 'upload') payload.imageMap = uploadedImgs;
 
           const response = await fetch('/api/drive', {
