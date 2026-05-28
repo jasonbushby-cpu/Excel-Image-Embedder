@@ -351,10 +351,7 @@
       document.getElementById('previewFooter').textContent = dataRows.length > 50 ? `Showing 50 of ${dataRows.length} products` : `${dataRows.length} products`;
     }
 
-    // How many product codes to pre-fetch per batch from Drive.
-    // Each batch is a fast /api/drive call that returns only JSON image data.
-    // The final Excel is built in one single call once all images are collected.
-    const PREFETCH_BATCH = 200;
+    const BATCH_SIZE = 200; // rows per /api/drive call
 
     async function generate() {
       if (!parsedRows.length) return;
@@ -373,108 +370,87 @@
       };
 
       try {
-        const dataRows = parsedRows.slice(1).filter(row => {
+        const headerRow = parsedRows[0];
+        const dataRows  = parsedRows.slice(1).filter(row => {
           const c = String(row[codeColIndex] || '').trim();
           return c && /\d/.test(c);
         });
 
-        let collectedImageMap = {};
+        // Split into batches — each batch gets header + up to BATCH_SIZE data rows
+        const batches = [];
+        for (let i = 0; i < dataRows.length; i += BATCH_SIZE) {
+          batches.push([headerRow, ...dataRows.slice(i, i + BATCH_SIZE)]);
+        }
+        const totalBatches = batches.length;
 
-        if (imgSource === 'drive') {
-          // ── Phase 1: pre-fetch images from Drive in batches ───────────
-          // Extract unique product codes
-          const codes = [...new Set(
-            dataRows.map(row => String(row[codeColIndex] || '').trim()).filter(Boolean)
-          )];
-          const batches = [];
-          for (let i = 0; i < codes.length; i += PREFETCH_BATCH) {
-            batches.push(codes.slice(i, i + PREFETCH_BATCH));
-          }
-          const totalBatches = batches.length;
+        // ── Phase 1: send each batch to /api/drive, get back xlsx blobs ──
+        const batchResults = []; // [{ xlsx: base64, matched, missing }]
 
-          for (let bIdx = 0; bIdx < totalBatches; bIdx++) {
-            const pct = Math.round(((bIdx + 0.5) / totalBatches) * 70);
-            setProgress(pct, `Fetching images ${bIdx * PREFETCH_BATCH + 1}–${Math.min((bIdx + 1) * PREFETCH_BATCH, codes.length)} of ${codes.length}…`);
+        for (let bIdx = 0; bIdx < totalBatches; bIdx++) {
+          const pct = Math.round((bIdx / totalBatches) * 80);
+          setProgress(pct, totalBatches > 1
+            ? `Processing batch ${bIdx + 1} of ${totalBatches}…`
+            : 'Fetching images and building Excel…'
+          );
 
-            const response = await fetch('/api/drive', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                prefetchCodes: batches[bIdx],   // signal: only fetch images, return JSON
-                codeColIndex, imgColIndex, sheetName,
-              }),
-            });
+          const payload = { rows: batches[bIdx], codeColIndex, imgColIndex, sheetName };
+          if (imgSource === 'upload') payload.imageMap = uploadedImgs;
 
-            if (!response.ok) {
-              const err = await response.json().catch(() => ({ error: 'Unknown server error.' }));
-              const fullMsg = err.hint ? `${err.error}\n\n💡 ${err.hint}` : (err.error || err.detail || 'Server error');
-              throw new Error(`Image fetch batch ${bIdx + 1} of ${totalBatches} failed: ${fullMsg}`);
-            }
+          const response = await fetch('/api/drive', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
 
-            const json = await response.json();
-            // Merge returned images into our map { CODE: base64string }
-            Object.assign(collectedImageMap, json.images || {});
-
-            const fetched = Object.keys(collectedImageMap).length;
-            setProgress(Math.round(((bIdx + 1) / totalBatches) * 70), `${fetched} images fetched…`);
+          if (!response.ok) {
+            const err = await response.json().catch(() => ({ error: 'Unknown server error — check your connection and try again.' }));
+            const fullMsg = err.hint ? `${err.error}\n\n💡 ${err.hint}` : (err.error || err.detail || 'Server error');
+            throw new Error(totalBatches > 1 ? `Batch ${bIdx + 1} of ${totalBatches} failed: ${fullMsg}` : fullMsg);
           }
 
-          setProgress(72, 'All images fetched — building Excel…');
+          const matched = parseInt(response.headers.get('X-Matched') || '0');
+          const missing = JSON.parse(response.headers.get('X-Missing') || '[]');
+          const buf = await response.arrayBuffer();
+          // Convert to base64 for sending to merge endpoint
+          const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+          batchResults.push({ xlsx: b64, matched, missing });
+
+          setProgress(Math.round(((bIdx + 1) / totalBatches) * 80),
+            `Batch ${bIdx + 1} of ${totalBatches} done — ${batchResults.reduce((s,r) => s + r.matched, 0)} images so far…`
+          );
+        }
+
+        // ── Phase 2: if only one batch, use it directly; otherwise merge ──
+        if (totalBatches === 1) {
+          // Single batch — decode base64 back to blob directly, no merge needed
+          setProgress(95, 'Preparing download…');
+          const binaryStr = atob(batchResults[0].xlsx);
+          const bytes = new Uint8Array(binaryStr.length);
+          for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+          generatedBlob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+          showResult(dataRows.length, batchResults[0].matched, batchResults[0].missing);
         } else {
-          // Upload mode — images already in memory
-          collectedImageMap = uploadedImgs;
-          setProgress(20, 'Building Excel with uploaded images…');
+          setProgress(82, `Merging ${totalBatches} batches into one file…`);
+
+          const mergeResponse = await fetch('/api/merge', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ batches: batchResults, sheetName }),
+          });
+
+          if (!mergeResponse.ok) {
+            const err = await mergeResponse.json().catch(() => ({ error: 'Merge failed — please try again.' }));
+            throw new Error(err.error || 'Merge failed');
+          }
+
+          setProgress(95, 'Preparing download…');
+          const totalMatched = batchResults.reduce((s, r) => s + r.matched, 0);
+          const allMissing   = batchResults.flatMap(r => r.missing);
+          generatedBlob = await mergeResponse.blob();
+
+          showResult(dataRows.length, totalMatched, allMissing);
         }
-
-        // ── Phase 2: single API call to build the complete Excel ───────
-        const response = await fetch('/api/drive', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            rows: parsedRows,
-            codeColIndex,
-            imgColIndex,
-            sheetName,
-            imageMap: collectedImageMap,
-          }),
-        });
-
-        if (!response.ok) {
-          const err = await response.json().catch(() => ({ error: 'Unknown server error — check your connection and try again.' }));
-          const fullMsg = err.hint ? `${err.error}\n\n💡 ${err.hint}` : (err.error || err.detail || 'Server error');
-          throw new Error(fullMsg);
-        }
-
-        setProgress(95, 'Downloading file…');
-
-        const matched = parseInt(response.headers.get('X-Matched') || '0');
-        const missing = JSON.parse(response.headers.get('X-Missing') || '[]');
-        generatedBlob = await response.blob();
-        const sizeMB  = (generatedBlob.size / 1024 / 1024).toFixed(1);
-
-        setProgress(100, 'Done');
-        document.getElementById('rProducts').textContent = dataRows.length;
-        document.getElementById('rMatched').textContent  = matched;
-        document.getElementById('rSize').textContent     = sizeMB + ' MB';
-        document.getElementById('result').style.display  = 'block';
-        document.getElementById('generateBtn').disabled  = false;
-
-        recordRun(matched);
-
-        if (missing.length > 0) {
-          const warn = document.getElementById('missingWarn');
-          warn.textContent = `${missing.length} product${missing.length > 1 ? 's' : ''} had no image: ${missing.slice(0, 6).join(', ')}${missing.length > 6 ? '…' : ''}`;
-          warn.style.display = 'block';
-        }
-
-        document.getElementById('dlBtn').onclick = () => {
-          const url = URL.createObjectURL(generatedBlob);
-          const a   = document.createElement('a');
-          a.href    = url;
-          a.download = sourceFileName.replace(/\.[^.]+$/, '') + '_images.xlsx';
-          a.click();
-          URL.revokeObjectURL(url);
-        };
 
       } catch(err) {
         document.getElementById('progressWrap').style.display = 'none';
@@ -483,6 +459,33 @@
         eb.style.display = 'block';
         document.getElementById('generateBtn').disabled = false;
       }
+    }
+
+    function showResult(totalProducts, matched, missing) {
+      const sizeMB = (generatedBlob.size / 1024 / 1024).toFixed(1);
+      document.getElementById('progressFill').style.width = '100%';
+      document.getElementById('progressLabel').textContent = 'Done';
+      document.getElementById('rProducts').textContent = totalProducts;
+      document.getElementById('rMatched').textContent  = matched;
+      document.getElementById('rSize').textContent     = sizeMB + ' MB';
+      document.getElementById('result').style.display  = 'block';
+      document.getElementById('generateBtn').disabled  = false;
+      recordRun(matched);
+
+      if (missing.length > 0) {
+        const warn = document.getElementById('missingWarn');
+        warn.textContent = `${missing.length} product${missing.length > 1 ? 's' : ''} had no image: ${missing.slice(0, 6).join(', ')}${missing.length > 6 ? '…' : ''}`;
+        warn.style.display = 'block';
+      }
+
+      document.getElementById('dlBtn').onclick = () => {
+        const url = URL.createObjectURL(generatedBlob);
+        const a   = document.createElement('a');
+        a.href    = url;
+        a.download = sourceFileName.replace(/\.[^.]+$/, '') + '_images.xlsx';
+        a.click();
+        URL.revokeObjectURL(url);
+      };
     }
 
     const dz = document.getElementById('dropZone');
