@@ -1,5 +1,6 @@
 const { google } = require('googleapis');
 const ExcelJS = require('exceljs');
+const sharp = require('sharp');
 
 const FOLDER_ID = '1B2js4ILgQkzYgPv9M65abw4M5-11k7_K';
 const CONCURRENCY = 8;
@@ -36,6 +37,20 @@ async function getImageBuffer(drive, fileId) {
     buffer: Buffer.from(response.data),
     mimeType: response.headers['content-type'] || 'image/jpeg',
   };
+}
+
+// Compress image buffer using sharp
+// targetMB: total file budget per image in KB (we'll do proportional sizing)
+async function compressImage(buffer, quality) {
+  try {
+    return await sharp(buffer)
+      .resize({ width: 400, height: 400, fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality })
+      .toBuffer();
+  } catch (err) {
+    console.error('Compression error:', err.message);
+    return buffer; // return original if compression fails
+  }
 }
 
 async function pLimit(tasks, concurrency) {
@@ -76,8 +91,12 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const { rows, codeColIndex, imgColIndex, sheetName, imageMap } = req.body;
+    const { rows, codeColIndex, imgColIndex, sheetName, imageMap, compressTarget } = req.body;
     if (!rows || !rows.length) return res.status(400).json({ error: 'No rows provided' });
+
+    // Compression quality settings
+    // We resize to max 400px and apply JPEG quality to hit target file size
+    const compressQuality = compressTarget === '5' ? 50 : compressTarget === '10' ? 70 : null;
 
     const useDrive = !imageMap;
     let drive = null;
@@ -86,29 +105,39 @@ module.exports = async function handler(req, res) {
       drive = google.drive({ version: 'v3', auth });
     }
 
-    // Collect all data rows with their codes (skip header row 0)
     const dataRows = [];
     for (let rowIdx = 1; rowIdx < rows.length; rowIdx++) {
       const code = String(rows[rowIdx][codeColIndex] || '').trim();
       if (code && /\d/.test(code)) dataRows.push({ rowIdx, code });
     }
 
-    // Fetch all images in parallel
     const imageResults = await pLimit(
       dataRows.map(({ rowIdx, code }) => async () => {
         try {
+          let buffer, extension;
+
           if (useDrive) {
             const file = await findImageInDrive(drive, code);
             if (!file) return { rowIdx, code, found: false };
             const imgData = await getImageBuffer(drive, file.id);
-            return { rowIdx, code, found: true, buffer: imgData.buffer, extension: imgData.mimeType.includes('png') ? 'png' : 'jpeg' };
+            buffer = imgData.buffer;
+            extension = imgData.mimeType.includes('png') ? 'png' : 'jpeg';
           } else {
             const entry = imageMap[code.toUpperCase()] || imageMap[code];
             if (!entry) return { rowIdx, code, found: false };
             const b64 = typeof entry === 'string' ? entry : entry.b64;
             const mime = typeof entry === 'string' ? 'image/jpeg' : (entry.mimeType || 'image/jpeg');
-            return { rowIdx, code, found: true, buffer: Buffer.from(b64, 'base64'), extension: mime.includes('png') ? 'png' : 'jpeg' };
+            buffer = Buffer.from(b64, 'base64');
+            extension = mime.includes('png') ? 'png' : 'jpeg';
           }
+
+          // Apply compression if requested
+          if (compressQuality) {
+            buffer = await compressImage(buffer, compressQuality);
+            extension = 'jpeg'; // sharp always outputs jpeg when compressing
+          }
+
+          return { rowIdx, code, found: true, buffer, extension };
         } catch (err) {
           console.error(`Error fetching ${code}:`, err.message);
           return { rowIdx, code, found: false };
@@ -117,7 +146,6 @@ module.exports = async function handler(req, res) {
       CONCURRENCY
     );
 
-    // Build workbook
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet(sheetName || 'Products');
     sheet.getColumn(imgColIndex + 1).width = 15;
