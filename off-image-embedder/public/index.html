@@ -543,6 +543,16 @@
         try {
           wb.definedNames.model = (wb.definedNames.model || []).filter(d => !/^_xlnm\._FilterDatabase/i.test(d.name));
         } catch (e) { console.warn('Could not clean defined names:', e); }
+        // ExcelJS can't write some conditional-format rule types (e.g. "duplicate values").
+        // It drops the rule but leaves an empty <conditionalFormatting>, which Excel rejects
+        // as an XML error in the sheet. Drop those rules (and any block left empty).
+        const CF_SUPPORTED = ['expression', 'cellIs', 'top10', 'aboveAverage', 'dataBar', 'colorScale', 'iconSet', 'containsText', 'timePeriod'];
+        wb.worksheets.forEach(sheet => {
+          if (!Array.isArray(sheet.conditionalFormattings)) return;
+          sheet.conditionalFormattings = sheet.conditionalFormattings
+            .map(cf => ({ ...cf, rules: (cf.rules || []).filter(r => CF_SUPPORTED.includes(r.type)) }))
+            .filter(cf => cf.rules.length);
+        });
         const out = await wb.xlsx.writeBuffer();
         generatedBlob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         showResult(products.length, matched, [...new Set(missing)]);
