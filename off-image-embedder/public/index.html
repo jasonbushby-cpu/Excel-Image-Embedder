@@ -389,7 +389,6 @@
     // your ORIGINAL spreadsheet, so its formatting is kept and there's no
     // size limit (Vercel caps each request/response at 4.5 MB).
     const CODES_PER_REQUEST = { none: 40, '10': 60, '5': 80 };
-    const IMG_PX = 76;   // image size shown in the cell
     const ROW_PT = 60;   // row height for rows with an image
 
     // Upload mode: shrink images in the browser to the same sizes the server uses
@@ -405,6 +404,18 @@
       ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
       ctx.drawImage(bmp, 0, 0, c.width, c.height);
       return c.toDataURL('image/jpeg', quality).split(',')[1];
+    }
+
+    // Pad an image onto a white square so it isn't stretched when it fills the square cell
+    async function padToSquare(b64) {
+      const bmp = await createImageBitmap(await (await fetch('data:image/jpeg;base64,' + b64)).blob());
+      const side = Math.max(bmp.width, bmp.height);
+      if (bmp.width === bmp.height) return b64;
+      const c = document.createElement('canvas'); c.width = c.height = side;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, side, side);
+      ctx.drawImage(bmp, (side - bmp.width) / 2, (side - bmp.height) / 2);
+      return c.toDataURL('image/jpeg', 0.85).split(',')[1];
     }
 
     async function fetchDriveImages(codes, setProgress) {
@@ -502,25 +513,21 @@
         // 2. Put them into the original spreadsheet
         setProgress(92, 'Building Excel file…');
         const { wb, ws } = await loadSourceWorkbook();
-        const col = ws.getColumn(imgColIndex + 1);
-        if (!col.width || col.width < 12) col.width = 12;
-        const colPx = (col.width || 12) * 7 + 5, rowPx = ROW_PT * 4 / 3;
+        // Square cell (80 x 80 px) so a square image fills it without stretching
+        ws.getColumn(imgColIndex + 1).width = 10.71;
 
         let matched = 0;
         for (const p of products) {
           const b64 = images[p.code];
           if (!b64) continue;
-          const dims = await new Promise(res => {
-            const im = new Image(); im.onload = () => res([im.naturalWidth, im.naturalHeight]); im.onerror = () => res([1, 1]);
-            im.src = 'data:image/jpeg;base64,' + b64;
-          });
-          const sc = IMG_PX / Math.max(dims[0], dims[1]);
-          const w = Math.round(dims[0] * sc), h = Math.round(dims[1] * sc);
-          const id = wb.addImage({ base64: b64, extension: 'jpeg' });
+          const sq = await padToSquare(b64);
+          const id = wb.addImage({ base64: sq, extension: 'jpeg' });
           ws.getRow(p.excelRow).height = ROW_PT;
+          // Two-cell anchor covering the image cell — this is what Excel for Mac/Windows displays reliably
           ws.addImage(id, {
-            tl: { col: imgColIndex + Math.max(0, (colPx - w) / 2) / colPx, row: p.excelRow - 1 + Math.max(0, (rowPx - h) / 2) / rowPx },
-            ext: { width: w, height: h },   // one-cell anchor: moves with its row when sorting/filtering
+            tl: { col: imgColIndex, row: p.excelRow - 1 },
+            br: { col: imgColIndex + 1, row: p.excelRow },
+            editAs: 'oneCell',
           });
           matched++;
         }
