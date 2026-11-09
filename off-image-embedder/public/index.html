@@ -304,7 +304,8 @@
           sheetStartRow = range.s.r + 1; // Excel row number of parsedRows[0]
           for (let r = range.s.r; r <= range.e.r; r++) {
             const row = [];
-            for (let c = range.s.c; c <= range.e.c; c++) {
+            // Start at column A (not the first used column) so "Column A/B/C…" in the dropdowns match the real sheet
+            for (let c = 0; c <= range.e.c; c++) {
               const cell = ws[XLSX.utils.encode_cell({ r, c })];
               row.push(cell ? cell.v : '');
             }
@@ -415,15 +416,18 @@
       const ctx = c.getContext('2d');
       ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, side, side);
       ctx.drawImage(bmp, (side - bmp.width) / 2, (side - bmp.height) / 2);
-      return c.toDataURL('image/jpeg', 0.85).split(',')[1];
+      // Re-encode at the chosen compression quality so padding doesn't undo the 5/10 MB options
+      return c.toDataURL('image/jpeg', (COMPRESS[compressTarget] || COMPRESS.none).quality).split(',')[1];
     }
 
     async function fetchDriveImages(codes, setProgress) {
       const images = {}, missing = [];
-      let queue = [...codes], done = 0, passes = 0;
+      let queue = [...codes], done = 0, stalled = 0;
       const per = CODES_PER_REQUEST[compressTarget] || 40;
       while (queue.length) {
-        if (++passes > 6) { missing.push(...queue); break; }
+        // Keep going while each pass makes progress; only give up after 4 passes in a row that fetch nothing
+        if (stalled >= 4) { missing.push(...queue); break; }
+        const doneBefore = done;
         const deferredAll = [];
         for (let i = 0; i < queue.length; i += per) {
           const chunk = queue.slice(i, i + per);
@@ -448,7 +452,8 @@
           setProgress(Math.round(done / codes.length * 90), `Fetching images — ${done} of ${codes.length}…`);
         }
         queue = deferredAll;
-        if (queue.length) await new Promise(r => setTimeout(r, 3000));
+        stalled = done > doneBefore ? 0 : stalled + 1;
+        if (queue.length) await new Promise(r => setTimeout(r, 3000 * (stalled + 1)));
       }
       return { images, missing };
     }
@@ -533,6 +538,11 @@
         }
 
         setProgress(98, 'Preparing download…');
+        // ExcelJS drops localSheetId on autofilter names, which makes Excel report
+        // "We found a problem with some content". Excel rebuilds them from the sheet's autofilter.
+        try {
+          wb.definedNames.model = (wb.definedNames.model || []).filter(d => !/^_xlnm\._FilterDatabase/i.test(d.name));
+        } catch (e) { console.warn('Could not clean defined names:', e); }
         const out = await wb.xlsx.writeBuffer();
         generatedBlob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         showResult(products.length, matched, [...new Set(missing)]);
