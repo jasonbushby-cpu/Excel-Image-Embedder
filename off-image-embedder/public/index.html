@@ -88,6 +88,9 @@
     .error-box { background: var(--red-light); border: 0.5px solid var(--red); border-radius: var(--radius-sm); padding: 0.75rem; font-size: 13px; color: var(--red); margin-top: 0.75rem; display: none; white-space: pre-line; line-height: 1.6; }
     .missing-warn { background: var(--amber-light); border: 0.5px solid #EF9F27; border-radius: var(--radius-sm); padding: 0.6rem 0.75rem; font-size: 12px; color: var(--amber); margin-top: 0.75rem; display: none; }
     input[type=file] { display: none; }
+    .place-tabs { margin-top: 12px; margin-bottom: 0; }
+    .col-hint { font-size: 12px; color: var(--text-muted); margin-top: 0.6rem; line-height: 1.5; }
+    .col-hint.warn { background: var(--amber-light); color: var(--amber); border-radius: var(--radius-sm); padding: 0.5rem 0.75rem; }
     /* Compression option */
     .compress-tabs { display: grid; grid-template-columns: 1fr 1fr 1fr; border: 0.5px solid var(--border-strong); border-radius: var(--radius-sm); overflow: hidden; }
     .compress-tab { padding: 0.65rem 0.5rem; text-align: center; font-size: 13px; font-family: inherit; cursor: pointer; background: var(--bg); color: var(--text-muted); border: none; border-right: 0.5px solid var(--border-strong); display: flex; align-items: center; justify-content: center; gap: 5px; transition: all 0.1s; }
@@ -154,20 +157,25 @@
       <div class="col-grid">
         <div class="field">
           <label>Product code column</label>
-          <select id="codeCol" onchange="buildPreview()">
+          <select id="codeCol" onchange="buildPreview(); updateColHint()">
             <option value="0">Column A</option><option value="1">Column B</option><option value="2">Column C</option>
             <option value="3">Column D</option><option value="4">Column E</option><option value="5">Column F</option>
           </select>
         </div>
         <div class="field">
-          <label>Image column</label>
-          <select id="imgCol">
-            <option value="0">Column A</option><option value="1" selected>Column B</option><option value="2">Column C</option>
+          <label id="imgColLabel">Insert new column at</label>
+          <select id="imgCol" onchange="updateColHint()">
+            <option value="0" selected>Column A</option><option value="1">Column B</option><option value="2">Column C</option>
             <option value="3">Column D</option><option value="4">Column E</option><option value="5">Column F</option>
             <option value="6">Column G</option><option value="7">Column H</option>
           </select>
         </div>
       </div>
+      <div class="source-tabs place-tabs">
+        <button class="source-tab active" id="placeInsert" onclick="setImgMode('insert')"><i class="ti ti-column-insert-left"></i> Add a new image column</button>
+        <button class="source-tab" id="placeExisting" onclick="setImgMode('existing')"><i class="ti ti-columns"></i> Use an existing column</button>
+      </div>
+      <div class="col-hint" id="colHint"></div>
     </div>
 
     <div class="card locked" id="card3">
@@ -273,6 +281,7 @@
       </div><!-- end container -->
 
   <script>
+    let imgMode = 'insert', hasFormulas = false, headerRowIdx = 0;
     let parsedRows = [], sourceBuffer = null, sheetStartRow = 1, sourceFileName = '', imgSource = 'drive', uploadedImgs = {}, generatedBlob = null, sheetName = 'Products', compressTarget = 'none';
 
     function setCompress(val) {
@@ -300,13 +309,14 @@
           sheetName = wb.SheetNames[0];
           const ws = wb.Sheets[sheetName];
           const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1');
-          parsedRows = [];
+          parsedRows = []; hasFormulas = false;
           sheetStartRow = range.s.r + 1; // Excel row number of parsedRows[0]
           for (let r = range.s.r; r <= range.e.r; r++) {
             const row = [];
             // Start at column A (not the first used column) so "Column A/B/C…" in the dropdowns match the real sheet
             for (let c = 0; c <= range.e.c; c++) {
               const cell = ws[XLSX.utils.encode_cell({ r, c })];
+              if (cell && cell.f) hasFormulas = true;
               row.push(cell ? cell.v : '');
             }
             parsedRows.push(row);
@@ -314,6 +324,7 @@
           markDone('badge1');
           unlock('card2'); unlock('card3'); unlock('card4');
           markDone('badge2'); markDone('badge3'); markDone('badge4'); unlock('card5'); markDone('badge5');
+          setupColumns();
           buildPreview();
           document.getElementById('generateBtn').disabled = false;
         } catch(err) { alert('Could not read file. Please use .xlsx or .csv format.'); }
@@ -362,13 +373,71 @@
       buildPreview();
     }
 
+    // ── Column setup ─────────────────────────────────────────────────────
+    const colLetter = n => { let s = ''; n++; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
+    const CODE_HEADER = /\bcode\b|\bsku\b|item\s*(no|number|code)|part\s*(no|number)|barcode|\bean\b/i;
+    const IMAGE_HEADER = /image|photo|picture|^pic/i;
+    const headerText = c => String((parsedRows[headerRowIdx] || [])[c] ?? '').trim();
+
+    // Fill the dropdowns with the sheet's own headers and pick sensible defaults
+    function setupColumns() {
+      // Header row: first of the top 5 rows that names a code column (else the first row)
+      headerRowIdx = Math.max(0, parsedRows.slice(0, 5).findIndex(r => r.some(v => CODE_HEADER.test(String(v ?? '')))));
+      const width = Math.max(8, ...parsedRows.slice(0, 50).map(r => r.length));
+      const body = parsedRows.slice(headerRowIdx + 1);
+      const filled = c => body.filter(r => String(r[c] ?? '').trim()).length;
+      const digitShare = c => { const v = body.map(r => String(r[c] ?? '').trim()).filter(Boolean); return v.length ? v.filter(x => /\d/.test(x)).length / v.length : 0; };
+      const label = c => `Column ${colLetter(c)}` + (headerText(c) ? ` — ${headerText(c).slice(0, 28)}` : '');
+
+      const codeSel = document.getElementById('codeCol'), imgSel = document.getElementById('imgCol');
+      codeSel.innerHTML = Array.from({ length: width }, (_, c) => `<option value="${c}">${label(c)}</option>`).join('');
+      imgSel.innerHTML = Array.from({ length: width + 1 }, (_, c) => `<option value="${c}">${label(c)}</option>`).join('');
+
+      let code = (parsedRows[headerRowIdx] || []).findIndex(h => CODE_HEADER.test(String(h ?? '')));
+      if (code < 0) code = Math.max(0, Array.from({ length: width }, (_, c) => c).findIndex(c => digitShare(c) > 0.8 && filled(c) > body.length * 0.5));
+      codeSel.value = code;
+
+      // An empty column headed "Image"/"Photo" → use it. Otherwise add a new column A.
+      const img = (parsedRows[headerRowIdx] || []).findIndex((h, c) => IMAGE_HEADER.test(String(h ?? '')) && filled(c) <= body.length * 0.05);
+      if (img >= 0) { setImgMode('existing', img); return; }
+      // Inserting a column doesn't rewrite formulas, so for sheets with formulas default to the first empty column on the right
+      if (hasFormulas) { setImgMode('existing', Math.min(width, Math.max(...parsedRows.map(r => { let n = r.length; while (n && String(r[n - 1] ?? '') === '') n--; return n; })))); return; }
+      setImgMode('insert', 0);
+    }
+
+    function setImgMode(mode, col) {
+      imgMode = mode;
+      document.getElementById('placeInsert').classList.toggle('active', mode === 'insert');
+      document.getElementById('placeExisting').classList.toggle('active', mode === 'existing');
+      document.getElementById('imgColLabel').textContent = mode === 'insert' ? 'Insert new column at' : 'Image column';
+      if (col !== undefined) document.getElementById('imgCol').value = col;
+      updateColHint();
+    }
+
+    function updateColHint() {
+      const el = document.getElementById('colHint');
+      if (!parsedRows.length) { el.textContent = ''; return; }
+      const c = parseInt(document.getElementById('imgCol').value), code = parseInt(document.getElementById('codeCol').value);
+      let msg, warn = false;
+      if (imgMode === 'insert') {
+        msg = headerText(c)
+          ? `A new "IMAGE" column goes in as column ${colLetter(c)}. ${headerText(c)} and everything to its right moves along one column.`
+          : `A new "IMAGE" column goes in as column ${colLetter(c)}.`;
+        if (hasFormulas) { msg += ' This sheet has formulas, and they won’t be updated for the move. Using an existing empty column is safer.'; warn = true; }
+      } else {
+        msg = `Images go into column ${colLetter(c)}` + (headerText(c) ? ` (${headerText(c)})` : '') + '. Nothing else moves.';
+        if (c === code) { msg = `Images would sit on top of the product codes in column ${colLetter(c)}. Pick another column, or add a new one.`; warn = true; }
+      }
+      el.textContent = msg; el.classList.toggle('warn', warn);
+    }
+
     function buildPreview() {
       if (!parsedRows.length) return;
       const codeCol = parseInt(document.getElementById('codeCol').value);
       const tbody = document.getElementById('previewBody');
       tbody.innerHTML = '';
       // Always skip row 0 (header), then also skip any row where code looks like a header label (no digits)
-      const dataRows = parsedRows.slice(1).filter(row => {
+      const dataRows = parsedRows.slice(headerRowIdx + 1).filter(row => {
         const c = String(row[codeCol]||'').trim();
         return c && /\d/.test(c); // must contain at least one digit to be a product code
       });
@@ -475,6 +544,41 @@
       return { wb: wb2, ws: ws2 };
     }
 
+    // Insert an empty column at colNum (1-based) and move everything from there one column right.
+    // ExcelJS moves the cells and column widths itself; merged cells, frozen panes, filters,
+    // conditional formats, validations, named ranges and existing pictures are moved here.
+    function insertImageColumn(wb, ws, colNum, headerRow) {
+      const l2n = s => s.split('').reduce((a, ch) => a * 26 + ch.charCodeAt(0) - 64, 0);
+      const shift = ref => String(ref).replace(/(\$?)([A-Z]{1,3})(?![A-Za-z(])/g, (m, d, col) => d + (l2n(col) >= colNum ? colLetter(l2n(col)) : col));
+      const shiftSheetRef = ref => { const i = ref.lastIndexOf('!'); if (i < 0) return shift(ref);
+        const sheet = ref.slice(0, i).replace(/^'|'$/g, ''); return sheet === ws.name ? ref.slice(0, i + 1) + shift(ref.slice(i + 1)) : ref; };
+      const safe = (what, fn) => { try { fn(); } catch (e) { console.warn('Insert column: could not move ' + what, e); } };
+
+      const merges = [...(ws.model.merges || [])];
+      merges.forEach(m => safe('merge ' + m, () => ws.unMergeCells(m)));
+      ws.spliceColumns(colNum, 0, []);
+      merges.forEach(m => safe('merge ' + m, () => ws.mergeCells(shift(m))));
+
+      safe('frozen panes', () => { ws.views = (ws.views || []).map(v => ({ ...v,
+        xSplit: v.xSplit && colNum <= v.xSplit ? v.xSplit + 1 : v.xSplit,
+        topLeftCell: v.topLeftCell && shift(v.topLeftCell), activeCell: v.activeCell && shift(v.activeCell) })); });
+      safe('filter', () => { const af = ws.autoFilter; if (!af) return;
+        if (typeof af === 'string') ws.autoFilter = shift(af);
+        else { const s1 = x => typeof x === 'string' ? shift(x) : (x && x.column >= colNum ? { ...x, column: x.column + 1 } : x);
+          ws.autoFilter = { ...af, from: s1(af.from), to: s1(af.to) }; } });
+      safe('conditional formats', () => { (ws.conditionalFormattings || []).forEach(cf => { cf.ref = shift(cf.ref); }); });
+      safe('data validations', () => { const m = ws.dataValidations.model || {}, n = {};
+        Object.keys(m).forEach(k => { n[shift(k)] = m[k]; }); ws.dataValidations.model = n; });
+      safe('print area', () => { if (ws.pageSetup && ws.pageSetup.printArea) ws.pageSetup.printArea = shift(ws.pageSetup.printArea); });
+      safe('named ranges', () => { wb.definedNames.model = (wb.definedNames.model || []).map(d => ({ ...d, ranges: (d.ranges || []).map(shiftSheetRef) })); });
+      safe('existing pictures', () => { (ws.getImages() || []).forEach(img => { ['tl', 'br'].forEach(k => {
+        const a = img.range && img.range[k]; if (a && a.nativeCol >= colNum - 1) a.nativeCol += 1; }); }); });
+
+      // Header cell for the new column, styled like the header next to it
+      safe('header', () => { const h = ws.getCell(headerRow, colNum), next = ws.getCell(headerRow, colNum + 1);
+        h.value = 'IMAGE'; if (next.style) h.style = JSON.parse(JSON.stringify(next.style)); });
+    }
+
     async function generate() {
       if (!parsedRows.length) return;
       const codeColIndex = parseInt(document.getElementById('codeCol').value);
@@ -495,7 +599,7 @@
         // Product rows: skip the header (row 0) and anything without a digit in the code
         const products = [];
         parsedRows.forEach((row, i) => {
-          if (i === 0) return;
+          if (i <= headerRowIdx) return;
           const code = String(row[codeColIndex] || '').trim();
           if (code && /\d/.test(code)) products.push({ code, excelRow: sheetStartRow + i });
         });
@@ -518,6 +622,7 @@
         // 2. Put them into the original spreadsheet
         setProgress(92, 'Building Excel file…');
         const { wb, ws } = await loadSourceWorkbook();
+        if (imgMode === 'insert') insertImageColumn(wb, ws, imgColIndex + 1, sheetStartRow + headerRowIdx);
         // Square cell (80 x 80 px) so a square image fills it without stretching
         ws.getColumn(imgColIndex + 1).width = 10.71;
 
@@ -546,7 +651,29 @@
         // ExcelJS can't write some conditional-format rule types (e.g. "duplicate values").
         // It drops the rule but leaves an empty <conditionalFormatting>, which Excel rejects
         // as an XML error in the sheet. Drop those rules (and any block left empty).
-        const CF_SUPPORTED = ['expression', 'cellIs', 'top10', 'aboveAverage', 'dataBar', 'colorScale', 'iconSet', 'containsText', 'timePeriod'];
+        // ExcelJS sorts cell addresses as text (B10 before B3) when it merges dropdown/validation
+        // cells into ranges, so the last cell gets written twice — overlapping rules Excel can reject.
+        // Group them into ranges here so ExcelJS writes them as-is.
+        wb.worksheets.forEach(sheet => { try {
+          const m = sheet.dataValidations.model || {}, groups = {}, out = {};
+          Object.keys(m).forEach(k => {
+            if (!m[k]) return;
+            const a = /^([A-Z]{1,3})(\d+)$/.exec(k);
+            if (!a) { out[k] = m[k]; return; }   // already a range
+            const key = a[1] + '|' + JSON.stringify(m[k]);
+            (groups[key] = groups[key] || { col: a[1], v: m[k], rows: [] }).rows.push(+a[2]);
+          });
+          Object.values(groups).forEach(g => {
+            g.rows.sort((x, y) => x - y);
+            for (let i = 0; i < g.rows.length; ) {
+              let j = i; while (j + 1 < g.rows.length && g.rows[j + 1] === g.rows[j] + 1) j++;
+              out[g.rows[i] === g.rows[j] ? g.col + g.rows[i] : `${g.col}${g.rows[i]}:${g.col}${g.rows[j]}`] = g.v;
+              i = j + 1;
+            }
+          });
+          sheet.dataValidations.model = out;
+        } catch (e) { console.warn('Could not tidy data validations:', e); } });
+        const CF_SUPPORTED =['expression', 'cellIs', 'top10', 'aboveAverage', 'dataBar', 'colorScale', 'iconSet', 'containsText', 'timePeriod'];
         wb.worksheets.forEach(sheet => {
           if (!Array.isArray(sheet.conditionalFormattings)) return;
           sheet.conditionalFormattings = sheet.conditionalFormattings
