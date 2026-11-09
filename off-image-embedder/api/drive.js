@@ -1,5 +1,4 @@
 const { google } = require('googleapis');
-const ExcelJS = require('exceljs');
 const sharp = require('sharp');
 
 const FOLDER_ID = '1B2js4ILgQkzYgPv9M65abw4M5-11k7_K';
@@ -14,18 +13,20 @@ function getAuth() {
 }
 
 async function findImageInDrive(drive, code) {
-  const extensions = ['jpg', 'JPG', 'jpeg', 'JPEG', 'png', 'PNG'];
-  for (const ext of extensions) {
-    const response = await drive.files.list({
-      q: `'${FOLDER_ID}' in parents and name = '${code}.${ext}' and trashed = false`,
-      fields: 'files(id, name, mimeType)',
-      pageSize: 1,
-    });
-    if (response.data.files && response.data.files.length > 0) {
-      return response.data.files[0];
-    }
-  }
-  return null;
+  // One query covering every extension (was up to six separate queries per code)
+  const safe = code.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const names = ['jpg', 'JPG', 'jpeg', 'JPEG', 'png', 'PNG']
+    .map(ext => `name = '${safe}.${ext}'`).join(' or ');
+  const response = await drive.files.list({
+    q: `'${FOLDER_ID}' in parents and (${names}) and trashed = false`,
+    fields: 'files(id, name, mimeType)',
+    pageSize: 10,
+  });
+  const files = response.data.files || [];
+  // Same preference order as before: jpg, then jpeg, then png
+  const rank = f => ['jpg', 'jpeg', 'png'].indexOf(f.name.split('.').pop().toLowerCase());
+  files.sort((a, b) => rank(a) - rank(b));
+  return files[0] || null;
 }
 
 async function getImageBuffer(drive, fileId) {
@@ -39,16 +40,22 @@ async function getImageBuffer(drive, fileId) {
   };
 }
 
-async function compressImage(buffer, quality) {
-  try {
-    return await sharp(buffer)
-      .resize({ width: 400, height: 400, fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality })
-      .toBuffer();
-  } catch (err) {
-    console.error('Compression error:', err.message);
-    return buffer;
-  }
+// Every image is resized before it's returned. Cells only show images at ~80px,
+// and keeping them small is what keeps each response under Vercel's 4.5 MB limit.
+const COMPRESS = {
+  none: { size: 400, quality: 82 },
+  '10': { size: 300, quality: 70 },
+  '5':  { size: 200, quality: 65 },
+};
+
+async function compressImage(buffer, target) {
+  const { size, quality } = COMPRESS[target] || COMPRESS.none;
+  return sharp(buffer)
+    .rotate()
+    .resize({ width: size, height: size, fit: 'inside', withoutEnlargement: true })
+    .flatten({ background: '#ffffff' })
+    .jpeg({ quality, mozjpeg: true })
+    .toBuffer();
 }
 
 async function pLimit(tasks, concurrency) {
@@ -81,6 +88,10 @@ function classifyError(msg) {
   return { userError: msg, hint: '' };
 }
 
+// Max base64 bytes per response — stays safely under Vercel's 4.5 MB response cap.
+// Anything over is returned as "deferred" and the page simply asks for it again.
+const MAX_RESPONSE_BYTES = 3.5 * 1024 * 1024;
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -89,130 +100,45 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const { rows, codeColIndex, imgColIndex, sheetName, imageMap, compressTarget, prevXlsx, isFirstBatch } = req.body;
-    if (!rows || !rows.length) return res.status(400).json({ error: 'No rows provided' });
+    const { codes, compressTarget } = req.body || {};
+    if (!Array.isArray(codes) || !codes.length) return res.status(400).json({ error: 'No product codes provided' });
+    if (codes.length > 100) return res.status(400).json({ error: 'Too many codes in one request (max 100)' });
 
-    const compressQuality = compressTarget === '5' ? 50 : compressTarget === '10' ? 70 : null;
-    const useDrive = !imageMap;
-    let drive = null;
-    if (useDrive) {
-      const auth = getAuth();
-      drive = google.drive({ version: 'v3', auth });
-    }
+    const drive = google.drive({ version: 'v3', auth: getAuth() });
 
-    // Collect data rows (skip header row 0)
-    const dataRows = [];
-    for (let rowIdx = 1; rowIdx < rows.length; rowIdx++) {
-      const code = String(rows[rowIdx][codeColIndex] || '').trim();
-      if (code && /\d/.test(code)) dataRows.push({ rowIdx, code });
-    }
-
-    // Fetch images in parallel
-    const imageResults = await pLimit(
-      dataRows.map(({ rowIdx, code }) => async () => {
+    const results = await pLimit(
+      codes.map(raw => async () => {
+        const code = String(raw).trim();
         try {
-          let buffer, extension;
-          if (useDrive) {
-            const file = await findImageInDrive(drive, code);
-            if (!file) return { rowIdx, code, found: false };
-            const imgData = await getImageBuffer(drive, file.id);
-            buffer = imgData.buffer;
-            extension = imgData.mimeType.includes('png') ? 'png' : 'jpeg';
-          } else {
-            const entry = imageMap[code.toUpperCase()] || imageMap[code];
-            if (!entry) return { rowIdx, code, found: false };
-            const b64 = typeof entry === 'string' ? entry : entry.b64;
-            const mime = typeof entry === 'string' ? 'image/jpeg' : (entry.mimeType || 'image/jpeg');
-            buffer = Buffer.from(b64, 'base64');
-            extension = mime.includes('png') ? 'png' : 'jpeg';
-          }
-          if (compressQuality) {
-            buffer = await compressImage(buffer, compressQuality);
-            extension = 'jpeg';
-          }
-          return { rowIdx, code, found: true, buffer, extension };
+          const file = await findImageInDrive(drive, code);
+          if (!file) return { code, found: false };
+          const { buffer } = await getImageBuffer(drive, file.id);
+          const small = await compressImage(buffer, compressTarget);
+          return { code, found: true, b64: small.toString('base64') };
         } catch (err) {
           console.error(`Error fetching ${code}:`, err.message);
-          return { rowIdx, code, found: false };
+          // Rate limits / timeouts: let the page retry this code rather than marking it missing
+          const msg = err.message || '';
+          const transient = /rateLimit|429|ETIMEDOUT|ECONNRESET|socket hang up|timeout/i.test(msg);
+          return { code, found: false, retry: transient };
         }
       }),
       CONCURRENCY
     );
 
-    // ── Load existing workbook or create new one ──────────────────────
-    const workbook = new ExcelJS.Workbook();
-
-    if (prevXlsx && !isFirstBatch) {
-      // Chain mode: load previous xlsx and append new rows to it
-      const prevBuffer = Buffer.from(prevXlsx, 'base64');
-      await workbook.xlsx.load(prevBuffer);
-    }
-
-    // Get or create the sheet
-    let sheet = workbook.getWorksheet(sheetName || 'Products');
-    if (!sheet) sheet = workbook.addWorksheet(sheetName || 'Products');
-
-    if (isFirstBatch) {
-      // First batch: set column width and write header + data rows normally
-      sheet.getColumn(imgColIndex + 1).width = 15;
-      rows.forEach((row, rowIdx) => {
-        const excelRow = sheet.getRow(rowIdx + 1);
-        row.forEach((cellVal, colIdx) => {
-          if (colIdx !== imgColIndex) excelRow.getCell(colIdx + 1).value = cellVal;
-        });
-        excelRow.commit();
-      });
-    } else {
-      // Subsequent batches: find last used row and append after it
-      const lastRow = sheet.lastRow ? sheet.lastRow.number : 0;
-      // rows[0] is the header — skip it, write data rows starting after lastRow
-      for (let i = 1; i < rows.length; i++) {
-        const destRowNum = lastRow + i;
-        const excelRow = sheet.getRow(destRowNum);
-        rows[i].forEach((cellVal, colIdx) => {
-          if (colIdx !== imgColIndex) excelRow.getCell(colIdx + 1).value = cellVal;
-        });
-        excelRow.commit();
-      }
-    }
-
-    // Embed images
-    let matched = 0;
+    const images = {};
     const missing = [];
-    const lastRowBeforeThisBatch = isFirstBatch ? 0 : (sheet.lastRow ? sheet.lastRow.number - (rows.length - 1) : 0);
-
-    for (const result of imageResults) {
-      if (!result.found) { missing.push(result.code); continue; }
-      try {
-        const imageId = workbook.addImage({ buffer: result.buffer, extension: result.extension });
-
-        // In first batch: rowIdx is relative to rows array (1-indexed)
-        // In subsequent batches: need to offset by rows already in the sheet
-        const sheetRow = isFirstBatch
-          ? result.rowIdx  // already correct: header is row 0, data starts row 1
-          : lastRowBeforeThisBatch + result.rowIdx;
-
-        sheet.getRow(sheetRow + 1).height = 60;
-        sheet.addImage(imageId, {
-          tl: { col: imgColIndex, row: sheetRow },
-          br: { col: imgColIndex + 1, row: sheetRow + 1 },
-          editAs: 'oneCell',
-        });
-        matched++;
-      } catch (err) {
-        console.error(`Error embedding ${result.code}:`, err.message);
-        missing.push(result.code);
-      }
+    const deferred = [];
+    let total = 0;
+    for (const r of results) {
+      if (r.retry) { deferred.push(r.code); continue; }
+      if (!r.found) { missing.push(r.code); continue; }
+      if (total + r.b64.length > MAX_RESPONSE_BYTES && Object.keys(images).length) { deferred.push(r.code); continue; }
+      images[r.code] = r.b64;
+      total += r.b64.length;
     }
 
-    const buffer = await workbook.xlsx.writeBuffer();
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', 'attachment; filename="output.xlsx"');
-    res.setHeader('X-Matched', String(matched));
-    res.setHeader('X-Missing', JSON.stringify(missing));
-    res.setHeader('Access-Control-Expose-Headers', 'X-Matched, X-Missing');
-    return res.status(200).send(buffer);
-
+    return res.status(200).json({ images, missing, deferred });
   } catch (err) {
     console.error('Handler error:', err.message, err.stack);
     const { userError, hint } = classifyError(err.message || '');
