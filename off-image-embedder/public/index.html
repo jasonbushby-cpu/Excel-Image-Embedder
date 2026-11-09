@@ -87,6 +87,13 @@
     .dl-note { font-size: 11px; color: var(--green-dark); text-align: center; margin-top: 0.5rem; opacity: 0.7; }
     .error-box { background: var(--red-light); border: 0.5px solid var(--red); border-radius: var(--radius-sm); padding: 0.75rem; font-size: 13px; color: var(--red); margin-top: 0.75rem; display: none; white-space: pre-line; line-height: 1.6; }
     .missing-warn { background: var(--amber-light); border: 0.5px solid #EF9F27; border-radius: var(--radius-sm); padding: 0.6rem 0.75rem; font-size: 12px; color: var(--amber); margin-top: 0.75rem; display: none; }
+    .missing-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .missing-head strong { margin-right: auto; }
+    .missing-btn { height: 28px; padding: 0 10px; border: 0.5px solid #EF9F27; border-radius: var(--radius-sm); background: #fff; color: var(--amber); font-size: 12px; font-family: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+    .missing-btn:hover { background: var(--amber-light); }
+    .missing-list { margin-top: 0.6rem; max-height: 200px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 12px; background: #fff; border-radius: var(--radius-sm); padding: 0.5rem 0.6rem; }
+    .missing-item { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px; color: var(--text); user-select: all; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .missing-item span { color: var(--text-faint); font-family: inherit; }
     input[type=file] { display: none; }
     .place-tabs { margin-top: 12px; margin-bottom: 0; }
     .col-hint { font-size: 12px; color: var(--text-muted); margin-top: 0.6rem; line-height: 1.5; }
@@ -682,7 +689,7 @@
         });
         const out = await wb.xlsx.writeBuffer();
         generatedBlob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        showResult(products.length, matched, [...new Set(missing)]);
+        showResult(products.length, matched, [...new Set(missing)], products);
 
       } catch(err) {
         document.getElementById('progressWrap').style.display = 'none';
@@ -693,7 +700,7 @@
       }
     }
 
-    function showResult(totalProducts, matched, missing) {
+    function showResult(totalProducts, matched, missing, products = []) {
       const sizeMB = (generatedBlob.size / 1024 / 1024).toFixed(1);
       document.getElementById('progressFill').style.width = '100%';
       document.getElementById('progressLabel').textContent = 'Done';
@@ -705,9 +712,32 @@
       recordRun(matched);
 
       if (missing.length > 0) {
+        // Every missing code, with the row(s) it's on, so the images can be found and fixed
+        const rowsOf = {};
+        products.forEach(p => { (rowsOf[p.code] = rowsOf[p.code] || []).push(p.excelRow); });
+        const sorted = [...missing].sort((a, b) => (rowsOf[a]?.[0] || 0) - (rowsOf[b]?.[0] || 0));
+        const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
         const warn = document.getElementById('missingWarn');
-        warn.textContent = `${missing.length} product${missing.length > 1 ? 's' : ''} had no image: ${missing.slice(0, 6).join(', ')}${missing.length > 6 ? '…' : ''}`;
+        warn.innerHTML = `
+          <div class="missing-head">
+            <strong>${missing.length} product${missing.length > 1 ? 's' : ''} had no image</strong>
+            <button class="missing-btn" id="copyMissing"><i class="ti ti-copy"></i> Copy codes</button>
+            <button class="missing-btn" id="dlMissing"><i class="ti ti-download"></i> Download list</button>
+          </div>
+          <div class="missing-list">${sorted.map(c => `<div class="missing-item" title="${esc(c)}">${esc(c)} <span>row ${(rowsOf[c] || []).join(', ')}</span></div>`).join('')}</div>`;
         warn.style.display = 'block';
+        document.getElementById('copyMissing').onclick = async e => {
+          const btn = e.currentTarget, text = sorted.join('\n');
+          try { await navigator.clipboard.writeText(text); }
+          catch { const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }
+          btn.innerHTML = '<i class="ti ti-check"></i> Copied'; setTimeout(() => { btn.innerHTML = '<i class="ti ti-copy"></i> Copy codes'; }, 1500);
+        };
+        document.getElementById('dlMissing').onclick = () => {
+          const csv = 'Product code,Row\n' + sorted.map(c => `"${String(c).replace(/"/g, '""')}","${(rowsOf[c] || []).join(', ')}"`).join('\n');
+          const url = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv' }));
+          const a = document.createElement('a'); a.href = url;
+          a.download = sourceFileName.replace(/\.[^.]+$/, '') + '_missing_images.csv'; a.click(); URL.revokeObjectURL(url);
+        };
       }
 
       document.getElementById('dlBtn').onclick = () => {
